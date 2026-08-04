@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Brand Theme Colors */
+  --primary-green: #2e522a;      /* Main Deep Green */
+  --sub-green: #E4F6E2;          /* Light Mint Sub Color */
+  
+  /* System Backgrounds & Surfacing */
+  --bg-primary: #f8faf8;
+  --bg-surface: #ffffff;
+  
+  /* Sidebar Palette */
+  --sidebar-bg: #1c331a;         /* Darker shade of main green for sidebar base */
+  --sidebar-hover: #264423;      /* Slightly lighter green for hover states */
+  --sidebar-active: #2e522a;     /* Main green for active tab background */
+  
+  /* Typography & Details */
+  --text-primary: #0f172a;
+  --text-muted: #64748b;
+  --text-light: #ffffff;
+  --border-color: #e2e8f0;
+  
+  /* System Radius Standards */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}

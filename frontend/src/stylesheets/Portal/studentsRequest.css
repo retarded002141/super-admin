@@ -1,0 +1,174 @@
+.students-request-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.requests-card {
+  background-color: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: var(--radius-lg, 14px);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.filters-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.status-filter-select {
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--border-color, #cbd5e1);
+  font-size: 13.5px;
+  font-family: inherit;
+  outline: none;
+  background-color: #ffffff;
+}
+
+.status-filter-select:focus {
+  border-color: var(--primary-green, #2e522a);
+}
+
+.student-info-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sub-text {
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.badge-pending {
+  background-color: #fef3c7;
+  color: #d97706;
+}
+
+.badge-pickup {
+  background-color: var(--sub-green, #e4f6e2);
+  color: var(--primary-green, #2e522a);
+}
+
+/* Table Actions Cell */
+.action-buttons-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Action Dropdown Select */
+.action-status-select {
+  padding: 6px 12px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--border-color, #cbd5e1);
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  background-color: #ffffff;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.action-status-select:focus {
+  border-color: var(--primary-green, #2e522a);
+}
+
+/* Action Delete Buttons */
+.btn-secondary {
+  padding: 8px 16px;
+  border-radius: var(--radius-md, 8px);
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background-color: #e2e8f0;
+}
+
+.btn-danger {
+  padding: 6px 14px;
+  border-radius: var(--radius-md, 8px);
+  background-color: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-danger:hover {
+  background-color: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
+}
+
+.btn-danger-confirm {
+  padding: 8px 16px;
+  border-radius: var(--radius-md, 8px);
+  background-color: #dc2626;
+  color: #ffffff;
+  border: none;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-danger-confirm:hover {
+  background-color: #b91c1c;
+}
+
+/* Modal Window & Overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+}
+
+.modal-box.delete-confirm-modal {
+  background-color: #ffffff;
+  width: 100%;
+  max-width: 440px;
+  border-radius: var(--radius-lg, 14px);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}

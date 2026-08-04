@@ -1,0 +1,315 @@
+/* =========================================
+   STUDENT EVALUATION FORM STYLES
+   ========================================= */
+
+.gray-bg {
+  background-color: #e1e1e1; 
+  min-height: 100vh;
+  padding: 30px 0; /* Vertical padding para may space sa taas at baba */
+  font-family: Arial, sans-serif;
+  color: #0a0a0a;
+}
+
+/* CONTAINER PARA PANTAY ANG MARGINS NG LAHAT */
+.eval-container {
+  width: 100%; 
+  max-width: 900px; 
+  margin: 0 auto; 
+  display: flex;
+  flex-direction: column;
+  gap: 15px; /* Distansya sa pagitan ng mga cards */
+}
+
+/* =========================================
+   ADMIN PREVIEW HEADER
+   ========================================= */
+.preview-header {
+  margin-bottom: 10px;
+}
+
+.btn-back-admin {
+  background-color: #2e5a2c;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.preview-banner {
+  background-color: #ff9800;
+  color: white;
+  padding: 10px;
+  text-align: center;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+/* =========================================
+   CARDS & CONTAINERS (Standard Width)
+   ========================================= */
+.eval-card, 
+.form-header-green, 
+.questions-container {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  width: 100%; /* Gamitin ang buong lapad ng container */
+  box-sizing: border-box; /* Isama ang padding sa width calculation */
+}
+
+.eval-card {
+  padding: 30px;
+}
+
+.eval-card.top-border {
+  border-top: 10px solid #2e5a2c; /* BTech Dark Green */
+}
+
+/* Typography for Instructions */
+.eval-card h1 {
+  font-size: 2rem;
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-weight: normal;
+}
+
+.intro-text {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 15px;
+}
+
+.eval-instructions h4 {
+  margin-top: 25px;
+  margin-bottom: 10px;
+  font-size: 1rem;
+}
+
+.eval-instructions ul {
+  padding-left: 20px;
+  margin-bottom: 15px;
+  font-size: 0.95rem;
+}
+
+.eval-instructions li {
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+/* Scale Tables */
+.scale-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+}
+
+.scale-table th, .scale-table td {
+  border: 1px solid #e0e0e0;
+  padding: 10px;
+  text-align: left;
+}
+
+.scale-table th {
+  background-color: #f9f9f9;
+}
+
+.mini-scale td, .mini-scale th {
+  border: none;
+  padding: 8px 5px;
+}
+.mini-scale th {
+  background-color: transparent;
+  font-weight: bold;
+  border-bottom: 1px solid #ccc;
+}
+
+/* =========================================
+   QUESTIONNAIRE UI (STEPS 1-5)
+   ========================================= */
+
+/* Top Dropdown Banner */
+.form-header-green {
+  background-color: #2e5a2c; /* Dark Green */
+  padding: 20px 30px;
+  display: flex;
+  gap: 20px;
+}
+
+.form-select-green {
+  flex: 1;
+  max-width: 300px;
+  padding: 10px 15px;
+  border-radius: 4px;
+  border: 1px solid #fff;
+  background-color: transparent;
+  color: white;
+  font-size: 0.95rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.form-select-green option {
+  color: #333;
+}
+
+/* Kapag disabled ang select sa Form 2 to 5 */
+.form-select-green.locked {
+  appearance: none;          /* Tinatanggal nito ang dropdown arrow */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: default;           /* Hindi na kamay ang cursor */
+  opacity: 1;                /* Para hindi magmukhang malabo */
+}
+
+/* Questions Section */
+.questions-container {
+  overflow: hidden; /* Para hindi lumampas ang banner sa rounded corners */
+}
+
+.section-title-banner {
+  background-color: #2e522a; /* Dark green banner */
+  color: white;
+  text-align: center;
+  padding: 12px;
+  font-weight: bold;
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+}
+
+.questions-body {
+  padding: 30px;
+}
+
+.teacher-is-title {
+  margin-top: 0;
+  margin-bottom: 25px;
+  font-size: 1.1rem;
+}
+
+.q-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.q-row:last-child {
+  border-bottom: none;
+}
+
+.q-text {
+  flex: 1;
+  padding-right: 20px;
+  font-size: 0.95rem;
+  color: #333;
+}
+
+/* Radio Buttons (Square with rounded corners) */
+.q-radios {
+  display: flex;
+  gap: 15px;
+}
+
+.q-radio-label {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.9rem;
+}
+
+.q-radio-label input {
+  display: none; /* Hide the default radio circle */
+}
+
+.q-radio-label:hover {
+  background-color: #f5f5f5;
+}
+
+.q-radio-label.selected {
+  border-color: #2e522a;
+  background-color: #e8f5e9;
+  color: #2e522a;
+  font-weight: bold;
+}
+
+/* Open Text Cards (Step 5) */
+.open-text-card {
+  padding: 25px 30px;
+}
+.open-text-card textarea:focus {
+  border-bottom-color: #2e5a2c !important;
+}
+
+/* =========================================
+   BUTTONS & ACTIONS
+   ========================================= */
+.form-actions-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.right-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.btn-next-step {
+  background-color: #2e522a;
+  color: white;
+  border: none;
+  padding: 12px 40px;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.btn-next-step:hover {
+  background-color: #1e401d;
+}
+
+.btn-back-step {
+  background-color: white;
+  color: #2e522a;
+  border: 1px solid #ccc;
+  padding: 12px 30px;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 1rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.btn-back-step:hover {
+  background-color: #f9f9f9;
+}
+
+.btn-clear-form {
+  background: none;
+  border: none;
+  color: #2e5a2c;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.btn-clear-form:hover {
+  text-decoration: underline;
+}
