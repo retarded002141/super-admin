@@ -8,7 +8,8 @@ import { StudentsRequest } from './pages/Portal/StudentsRequest';
 import Dashboard from './pages/Pre-Admission/Dashboard';
 import Admission from './pages/Pre-Admission/Admission';
 import Applications from './pages/Pre-Admission/Applications';
-import Settings from './pages/Pre-Admission/Settings';
+import Settings from './pages/Pre-Admission/Settings'
+import EvaluationAdmin from './pages/Evaluation/EvaluationAdmin'
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -68,9 +69,10 @@ export default function App() {
           {activeTab === 'pre-admission-applications' && <Applications navigateToTab={navigateToTab} navigationState={navigationState} />}
           {activeTab === 'pre-admission-admission' && <Admission navigateToTab={navigateToTab} />}
           {activeTab === 'pre-admission-settings' && <Settings navigateToTab={navigateToTab} />}
+          {activeTab === 'evaluation' && <EvaluationAdmin />}
 
-          {/* Removed 'students-request' from this fallback list below */}
-          {['pre-enrollment', 'pre-advising', 'evaluation', 'grading'].includes(activeTab) && (
+          {/* Removed 'students-request' and 'evaluation' from this fallback list below */}
+          {['pre-enrollment', 'pre-advising', 'grading'].includes(activeTab) && (
             <div className="placeholder-view">
               Module for <strong>{getTabTitle()}</strong> is ready to be built next.
             </div>

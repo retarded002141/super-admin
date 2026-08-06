@@ -1,0 +1,208 @@
+/* SelfEvaluation.css */
+
+.se-container {
+  padding: 20px;
+  font-family: 'Inter', Arial, sans-serif;
+  max-width: 100%;
+  margin: 0 auto;
+  background-color: #f3f4f6;
+}
+
+.se-top-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.se-btn-back {
+  padding: 10px 18px;
+  background-color: #2e5a2c;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.se-btn-print {
+  padding: 10px 18px;
+  background-color: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.se-paper {
+  background-color: #ffffff;
+  padding: 40px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.se-header-banner {
+  background-color: #2e5a2c; /* Green banner style */
+  color: white;
+  padding: 25px;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 20px;
+  text-align: left;
+  margin-bottom: 30px;
+}
+
+.se-info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 25px;
+  margin-bottom: 40px;
+}
+
+@media (max-width: 768px) {
+  .se-info-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.se-info-label {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: #374151;
+}
+
+.se-info-view-box {
+  background-color: #f9fafb;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #9ca3af;
+  font-size: 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.se-info-view-box:hover {
+  border-color: #cbd5e1;
+}
+
+.se-scale-legend-title {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: #111827;
+}
+
+.se-scale-legend-container {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 40px;
+  background-color: #fafafa;
+}
+
+.se-scale-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.se-scale-row:last-child {
+  border-bottom: none;
+}
+
+.se-scale-num {
+  background-color: #2e5a2c;
+  color: white;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.se-instruction {
+  font-weight: 600;
+  font-size: 16px;
+  margin-bottom: 25px;
+  color: #1f2937;
+}
+
+.se-questions-container {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.se-question-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  background-color: #fff;
+}
+
+.se-q-num {
+  background-color: #2e5a2c;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  flex-shrink: 0;
+  margin-right: 20px;
+}
+
+.se-q-text {
+  margin: 0 0 15px 0;
+  font-size: 15px;
+  color: #374151;
+  line-height: 1.6;
+}
+
+/* RATING BOX STYLE - GAYA NG CLASSROOM OBSERVATION */
+.se-rating-group {
+  display: flex;
+  gap: 12px;
+}
+
+.se-rating-box {
+  width: 35px;
+  height: 35px;
+  border: 1px solid #d1d5db; /* Gray border style */
+  background-color: #ffffff;
+  color: #4b5563;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: default;
+}
+
+/* No printing for UI buttons */
+@media print {
+  .no-print {
+    display: none;
+  }
+  .se-container {
+    background-color: #fff;
+    padding: 0;
+  }
+  .se-paper {
+    box-shadow: none;
+    border: none;
+  }
+}

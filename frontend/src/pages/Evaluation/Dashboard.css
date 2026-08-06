@@ -1,0 +1,319 @@
+/* =========================================
+   DASHBOARD STYLES
+   ========================================= */
+
+.dash-container {
+  padding: 20px;
+  font-family: montserrat, sans-serif;
+  color: #333;
+}
+
+.dash-banner {
+  background-color: #2e522a;
+  color: white;
+  border-radius: 8px;
+  padding: 25px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.dash-semester {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  margin: 0 0 8px 0;
+  color: #d1d5db;
+}
+
+.dash-title {
+  font-size: 1.8rem;
+  margin: 0 0 4px 0;
+  font-weight: 700;
+}
+
+.dash-subtitle {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #e2e8f0;
+}
+
+.dash-status-box {
+  background-color: rgba(255, 255, 255, 0.15);
+  padding: 12px 20px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+}
+
+.dash-status-label {
+  font-size: 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  color: #cbd5e1;
+}
+
+.dash-status-value {
+  font-size: 1.5rem;
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.dash-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.dash-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.dash-card-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #1e293b;
+}
+
+.dash-big-num {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.dash-small-num {
+  font-size: 1.2rem;
+  color: #94a3b8;
+  font-weight: normal;
+}
+
+.dash-sub-text {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.dash-divider {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 15px 0;
+}
+
+.dash-progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.dash-progress-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dash-progress-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.dash-progress-track {
+  width: 100%;
+  height: 6px;
+  background-color: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dash-progress-fill {
+  height: 100%;
+  background-color: #00923d;
+  border-radius: 4px;
+}
+
+.dash-progress-text {
+  font-size: 0.75rem;
+  color: #15803d;
+  font-weight: 600;
+}
+
+.dash-accordion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.dash-accordion-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-accordion-btn {
+  width: 100%;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 12px 15px;
+  font-weight: 600;
+  color: #334155;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dash-accordion-btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.dash-accordion-btn.open {
+  border-radius: 6px 6px 0 0;
+  background-color: #f1f5f9;
+}
+
+.dash-accordion-content {
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 20px 15px;
+  animation: fadeIn 0.3s ease-in-out;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.dash-accordion-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dash-accordion-content::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dash-inner-section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 5px 0;
+}
+
+.dash-section-progress {
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-section-progress-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.dash-sp-label {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.dash-sp-percent {
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: #15803d;
+}
+
+.dash-table-wrapper {
+  background-color: #eaf7ef;
+  border-radius: 8px;
+  overflow: hidden;
+  color: #14532d;
+  margin-top: 20px;
+}
+
+.dash-table-header {
+  padding: 20px;
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+.dash-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dash-table th {
+  text-align: left;
+  padding: 15px 20px;
+  font-size: 0.9rem;
+  color: #166534;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  text-transform: uppercase;
+}
+
+.dash-table td {
+  padding: 15px 20px;
+  font-size: 0.8rem;
+}
+
+.dash-table tbody tr {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  background-color: #f3fbf6;
+}
+
+.dash-table tbody tr:nth-child(even) {
+  background-color: #e0f2e6;
+}
+
+/* Container para sa Completed at Pending text sa ilalim ng bar */
+.dash-progress-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
+/* Ayos nung text na green (Hal: 75% Completed) */
+.dash-progress-text {
+  font-weight: 600;
+  color: #16a34a; 
+  font-size: 0.8rem;
+}
+
+/* Bagong design para sa Pending badge katabi ng Completed */
+.dash-progress-pending {
+  font-weight: 600;
+  color: #b91c1c; /* Dark red text */
+  font-size: 0.8rem;
+  background-color: #ffc6c6; /* Light red background */
+  padding: 3px 8px;
+  border-radius: 10px;
+}
