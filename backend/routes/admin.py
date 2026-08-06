@@ -587,22 +587,22 @@ async def update_interview_status(id: str, payload: dict = Body(...), user: dict
 @router.put("/applicants/bulk-status")
 async def bulk_update_status(payload: dict = Body(...), user: dict = Depends(admin_only)):
     ids = payload.get("applicantIds", payload.get("ids", []))
-    status = payload.get("status")
+    admission_status = payload.get("admissionStatus")
+    base_status = payload.get("status")
+    
     if not ids: 
         raise HTTPException(status_code=400, detail="No IDs provided")
     
     obj_ids = [ObjectId(i) for i in ids]
     applicants_before = list(applicant_collection.find({"_id": {"$in": obj_ids}}))
     
-    # Prevent confirming or forfeiting failed applicants (allow if Passed, Admitted, Confirmed, or has passing exam/interview scores)
-    if status in ["Confirmed", "Forfeit"]:
+    if admission_status in ["Confirmed", "Forfeit"]:
         valid_applicants = []
         for a in applicants_before:
             adm_status = (a.get("admissionStatus") or "").lower()
             exam = a.get("examScore", 0) or 0
             interview = a.get("interviewScore", 0) or 0
             
-            # Eligible if explicitly passed/admitted or if scores are passing
             if adm_status in ["passed", "admitted", "confirmed"] or (exam >= 75 and interview >= 75):
                 valid_applicants.append(a)
                 
@@ -612,16 +612,21 @@ async def bulk_update_status(payload: dict = Body(...), user: dict = Depends(adm
     if not obj_ids:
         return {"msg": "No eligible applicants to update.", "admissionEmailsSent": 0, "admissionEmailFailures": 0}
 
-    applicant_collection.update_many({"_id": {"$in": obj_ids}}, {"$set": {"admissionStatus": status}})
+    update_fields = {}
+    if admission_status:
+        update_fields["admissionStatus"] = admission_status
+    if base_status:
+        update_fields["status"] = base_status
+
+    if update_fields:
+        applicant_collection.update_many({"_id": {"$in": obj_ids}}, {"$set": update_fields})
     
-    # Bulk trigger database transfer ONLY when "Confirmed"
-    if status == "Confirmed":
+    if admission_status == "Confirmed":
         newly_admitted = [a for a in applicants_before if a.get("admissionStatus") != "Confirmed"]
         for app in newly_admitted:
             final_id = app.get("applicantId", "")
             course_name = app.get("firstChoice", "General")
             
-            # AUTO-SECTIONING (45 Limit per Block)
             current_enrollees = student_collection.count_documents({"course": course_name})
             section_index = current_enrollees // 45
             section_letter = chr(65 + section_index) 
@@ -632,7 +637,6 @@ async def bulk_update_status(payload: dict = Body(...), user: dict = Depends(adm
                          app.get(f"{prefix}Province"), app.get(f"{prefix}Zip")]
                 return ", ".join([p for p in parts if p])
 
-            # 1. AUTH ACCOUNT (Saved to users collection)
             user_data = {
                 "username": final_id,
                 "email": app.get("email", ""),
@@ -643,7 +647,6 @@ async def bulk_update_status(payload: dict = Body(...), user: dict = Depends(adm
                 "lastLogin": None
             }
             
-            # 2. ACADEMIC PROFILE (Saved to students collection)
             student_data = {
                 "applicant_id": final_id,
                 "first_name": app.get("firstName", ""),
@@ -673,7 +676,7 @@ async def bulk_update_status(payload: dict = Body(...), user: dict = Depends(adm
             user_collection.update_one({"email": app.get("email")}, {"$set": user_data}, upsert=True)
             student_collection.update_one({"applicant_id": final_id}, {"$set": student_data}, upsert=True)
             
-    if status == "Forfeit":
+    if admission_status == "Forfeit":
         newly_forfeited = [a for a in applicants_before if a.get("admissionStatus") != "Forfeit"]
         for app in newly_forfeited:
             old_email = app.get("email", "")
@@ -783,15 +786,18 @@ async def import_scores(file: UploadFile = File(...), user: dict = Depends(admin
 
 @router.put("/applicant/{id}/status")
 async def update_status(id: str, payload: dict = Body(...), user: dict = Depends(admin_only)):
-    status = payload.get("status")
+    admission_status = payload.get("admissionStatus")
+    base_status = payload.get("status")
     exam_score = payload.get("examScore")
     interview_score = payload.get("interviewScore")
     gwa = payload.get("gwa")
     
     update_fields = {}
-    if status:
-        update_fields["admissionStatus"] = status
-        update_fields["status"] = status
+    if admission_status:
+        update_fields["admissionStatus"] = admission_status
+    if base_status:
+        update_fields["status"] = base_status
+        
     if exam_score is not None:
         update_fields["examScore"] = float(exam_score)
         update_fields["isExamined"] = True
@@ -805,26 +811,25 @@ async def update_status(id: str, payload: dict = Body(...), user: dict = Depends
     if not existing_applicant:
         raise HTTPException(status_code=404, detail="Applicant not found")
 
-    # Prevent confirming or forfeiting if explicitly failed or completely unexamined
     current_status = (existing_applicant.get("admissionStatus") or "pending").lower()
-    exam_score = existing_applicant.get("examScore", 0) or 0
-    interview_score = existing_applicant.get("interviewScore", 0) or 0
+    db_exam_score = existing_applicant.get("examScore", 0) or 0
+    db_interview_score = existing_applicant.get("interviewScore", 0) or 0
 
-    is_passing_scores = (exam_score >= 75 and interview_score >= 75)
+    is_passing_scores = (db_exam_score >= 75 and db_interview_score >= 75)
     is_already_passed = current_status in ["passed", "admitted", "confirmed"]
 
-    if status in ["Confirmed", "Forfeit"] and not (is_already_passed or is_passing_scores):
+    if admission_status in ["Confirmed", "Forfeit"] and not (is_already_passed or is_passing_scores):
         raise HTTPException(status_code=400, detail="Cannot mark as Confirmed/Forfeit because the applicant has not met passing requirements.")
 
-    applicant_collection.update_one({"_id": ObjectId(id)}, {"$set": update_fields})
+    if update_fields:
+        applicant_collection.update_one({"_id": ObjectId(id)}, {"$set": update_fields})
+        
     applicant = applicant_collection.find_one({"_id": ObjectId(id)})
 
-    # Trigger database transfer ONLY when "Confirmed"
-    if status == "Confirmed" and existing_applicant.get("admissionStatus") != "Confirmed":
+    if admission_status == "Confirmed" and existing_applicant.get("admissionStatus") != "Confirmed":
         final_id = applicant.get("applicantId", "")
         course_name = applicant.get("firstChoice", "General")
         
-        # AUTO-SECTIONING (45 Limit per Block)
         current_enrollees = student_collection.count_documents({"course": course_name})
         section_index = current_enrollees // 45
         section_letter = chr(65 + section_index) 
@@ -835,7 +840,6 @@ async def update_status(id: str, payload: dict = Body(...), user: dict = Depends
                      applicant.get(f"{prefix}Province"), applicant.get(f"{prefix}Zip")]
             return ", ".join([p for p in parts if p])
 
-        # 1. AUTH ACCOUNT (Saved to users collection)
         user_data = {
             "username": final_id,
             "email": applicant.get("email", ""),
@@ -846,7 +850,6 @@ async def update_status(id: str, payload: dict = Body(...), user: dict = Depends
             "lastLogin": None
         }
         
-        # 2. ACADEMIC PROFILE (Saved to students collection)
         student_data = {
             "applicant_id": final_id,
             "first_name": applicant.get("firstName", ""),
@@ -876,7 +879,7 @@ async def update_status(id: str, payload: dict = Body(...), user: dict = Depends
         user_collection.update_one({"email": applicant.get("email")}, {"$set": user_data}, upsert=True)
         student_collection.update_one({"applicant_id": final_id}, {"$set": student_data}, upsert=True)
 
-    if status == "Forfeit":
+    if admission_status == "Forfeit":
         old_email = applicant.get("email", "")
         applicant_collection.update_one({"_id": ObjectId(id)}, {"$set": {"applicantId": ""}})
         if old_email:

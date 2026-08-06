@@ -107,9 +107,11 @@ export default function Dashboard({ navigateToTab }) {
   const forInterviewCount = filteredDashboardApplicants.filter(a => a.status === "For Interview" && !a.isInterviewed).length;
 
   const admittedApplicants = filteredDashboardApplicants.filter(a => {
-    const finalStatus = (a.admissionStatus || a.status || "").toUpperCase();
-
-    return finalStatus === "PASSED" || finalStatus === "ADMITTED" || finalStatus === "CONFIRMED";
+    // Rely purely on the admissionStatus column which we now heavily control.
+    const status = String(a.admissionStatus || "").trim().toUpperCase();
+    
+    // Strict matching: Only count them if their core admission journey is Passed or Confirmed.
+    return status === "PASSED" || status === "CONFIRMED";
   }).length;
 
   useEffect(() => {

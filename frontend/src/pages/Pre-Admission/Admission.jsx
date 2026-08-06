@@ -499,31 +499,46 @@ export default function Admission({ navigateToTab }) {
 
   const handleRowAction = async (id, newStatus) => {
     const app = applicants.find(a => a.id === id);
-    let dbStatus = newStatus;
-    if (newStatus === "Passed") dbStatus = "Admitted";
-    if (newStatus === "Failed") dbStatus = "Failed";
+    
+    // Status is ONLY 'Admitted' when explicitly Confirmed. Otherwise it remains unchanged.
+    const newBaseStatus = newStatus === "Confirmed" ? "Admitted" : app.status;
 
-    setApplicants((prev) => prev.map((a) => (a.id === id ? { ...a, admissionRemarks: newStatus, admissionStatus: newStatus, status: newStatus } : a)));
+    setApplicants((prev) => prev.map((a) => (a.id === id ? {
+        ...a,
+        admissionRemarks: newStatus,
+        admissionStatus: newStatus,
+        status: newBaseStatus
+    } : a)));
     setSelectedIds((prev) => prev.filter((sid) => sid !== id));
 
     try {
-      await api.put(`/admin/applicant/${app.rawId}/status`, { status: dbStatus })
-        .catch(() => api.patch(`/admin/applicant/${app.rawId}/status`, { status: dbStatus }));
-    } catch (e) { console.error(e); }
+        const payload = { admissionStatus: newStatus, status: newBaseStatus };
+        await api.put(`/admin/applicant/${app.rawId}/status`, payload)
+            .catch(() => api.patch(`/admin/applicant/${app.rawId}/status`, payload));
+    } catch(e) { console.error(e); }
   };
 
   const handleBulkAction = async (newStatus) => {
-    let dbStatus = newStatus;
-    if (newStatus === "Passed") dbStatus = "Admitted";
-    if (newStatus === "Failed") dbStatus = "Failed";
+    const isConfirming = newStatus === "Confirmed";
 
-    setApplicants((prev) => prev.map((app) => (selectedIds.includes(app.id) ? { ...app, admissionRemarks: newStatus, admissionStatus: newStatus, status: newStatus } : app)));
+    setApplicants((prev) => prev.map((app) => (selectedIds.includes(app.id) ? {
+        ...app,
+        admissionRemarks: newStatus,
+        admissionStatus: newStatus,
+        status: isConfirming ? "Admitted" : app.status
+    } : app)));
 
     try {
-      const targets = applicants.filter(a => selectedIds.includes(a.id)).map(a => a.rawId);
-      await api.put(`/admin/applicants/bulk-status`, { ids: targets, status: dbStatus })
-        .catch(() => api.patch(`/admin/applicants/bulk-status`, { ids: targets, status: dbStatus }));
-    } catch (e) { console.error(e); }
+        const targets = applicants.filter(a => selectedIds.includes(a.id)).map(a => a.rawId);
+        const payload = {
+            ids: targets,
+            admissionStatus: newStatus,
+            ...(isConfirming && { status: "Admitted" })
+        };
+
+        await api.put(`/admin/applicants/bulk-status`, payload)
+            .catch(() => api.patch(`/admin/applicants/bulk-status`, payload));
+    } catch(e) { console.error(e); }
 
     setSelectedIds([]);
   };
@@ -1354,8 +1369,8 @@ export default function Admission({ navigateToTab }) {
                       <FaEnvelope size={14} /> Send Emails
                     </button>
 
-                    {/* BULK CONFIRM: Only visible if ALL selected are Passed AND have already been emailed */}
-                    {isAllPassed && isAllEmailed && (
+                    {/* BULK CONFIRM: Only visible to SuperAdmin if ALL selected are Passed AND have already been emailed */}
+                    {userRole === "SuperAdmin" && isAllPassed && isAllEmailed && (
                       <button
                         onClick={() => triggerConfirmModal('bulk', 'Confirmed')}
                         className="bg-[#376e35] text-white px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 font-[600] hover:bg-[#2b562a] transition"
@@ -1364,8 +1379,8 @@ export default function Admission({ navigateToTab }) {
                       </button>
                     )}
 
-                    {/* BULK FORFEIT: Only visible if ALL selected are Passed AND have already been emailed */}
-                    {isAllPassed && isAllEmailed && (
+                    {/* BULK FORFEIT: Only visible to SuperAdmin if ALL selected are Passed AND have already been emailed */}
+                    {userRole === "SuperAdmin" && isAllPassed && isAllEmailed && (
                       <button
                         onClick={() => triggerConfirmModal('bulk', 'Forfeit')}
                         className="bg-gray-700 text-white px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 font-[600] hover:bg-gray-800 transition"
@@ -1494,7 +1509,7 @@ export default function Admission({ navigateToTab }) {
                           >
                             <MessageSquare size={14} />
                           </button>
-                          {(a.admissionRemarks === 'Passed' || a.admissionStatus === 'Passed' || a.admissionStatus === 'Admitted' || a.admissionStatus === 'Confirmed') && (
+                          {userRole === "SuperAdmin" && (a.admissionRemarks === 'Passed' || a.admissionStatus === 'Passed' || a.admissionStatus === 'Admitted' || a.admissionStatus === 'Confirmed') && (
                             <>
                               <button
                                 onClick={() => triggerConfirmModal(a.id, "Confirmed")}
