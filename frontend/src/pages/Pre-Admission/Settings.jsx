@@ -52,7 +52,7 @@ export default function Settings({ navigateToTab }) {
     _id: "", name: "", abbreviation: "", address: "", openingDays: "", openingTime: "", closingTime: "", dailyLimit: ""
   });
 
-  const [securitySettings, setSecuritySettings] = useState({ twoFactorAuth: false });
+  const [securitySettings, setSecuritySettings] = useState({ twoFactorAuth: false, applicantEmailAuth: true });
   const [notifSettings, setNotifSettings] = useState({
     emailNewApp: true,
     docUploads: true,
@@ -443,10 +443,10 @@ export default function Settings({ navigateToTab }) {
     }
   };
 
-  const handleToggle2FA = async () => {
-    if (isArchiveMode || currentUserRole !== "SuperAdmin") return;
-    const newState = !securitySettings.twoFactorAuth;
-    const updatedSecurity = { ...securitySettings, twoFactorAuth: newState };
+  const handleToggleSecurity = async (key) => {
+    if (isArchiveMode || currentUserRole !== "SuperAdmin") return; 
+    const newState = !securitySettings[key];
+    const updatedSecurity = { ...securitySettings, [key]: newState };
     setSecuritySettings(updatedSecurity);
 
     try {
@@ -1569,19 +1569,31 @@ export default function Settings({ navigateToTab }) {
           {activeTab === "security" && (
             <div className="space-y-8 animate-fade-in">
               <div>
-                <h2 className="text-lg font-bold text-black mb-1 flex items-center gap-2">
-                  <Shield className="text-[#376e35]" size={24} /> Security Settings
+                <h2 className="text-xl font-bold text-black mb-1 flex items-center gap-2">
+                  <Shield className="text-[#376e35]" size={24}/> Security Settings
                 </h2>
                 <hr className="border-gray-300 mb-6 mt-2" />
-                <div className="flex justify-between items-center bg-gray-50 p-6 rounded-xl border border-gray-200">
-                  <div>
-                    <h3 className="font-bold text-base text-gray-800">Two-Factor Authentication (2FA)</h3>
-
-                    <p className="text-xs text-gray-600 mt-1">Require verification code for Admin login.</p>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center bg-gray-50 p-6 rounded-xl border border-gray-200">
+                    <div>
+                      <h3 className="font-bold text-[16px] text-gray-800">Two-Factor Authentication (2FA)</h3>
+                      <p className="text-[12px] text-gray-600 mt-1">Require verification code for Admin login.</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-[12px] font-bold ${securitySettings.twoFactorAuth ? "text-[#376e35]" : "text-gray-500"}`}>{securitySettings.twoFactorAuth ? "ENABLED" : "DISABLED"}</span>
+                      <ToggleSwitch disabled={isArchiveMode || currentUserRole !== "SuperAdmin"} checked={securitySettings.twoFactorAuth} onChange={() => handleToggleSecurity('twoFactorAuth')} />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`text-xs font-bold ${securitySettings.twoFactorAuth ? "text-[#376e35]" : "text-gray-500"}`}>{securitySettings.twoFactorAuth ? "ENABLED" : "DISABLED"}</span>
-                    <ToggleSwitch disabled={isArchiveMode || currentUserRole !== "SuperAdmin"} checked={securitySettings.twoFactorAuth} onChange={handleToggle2FA} />
+
+                  <div className="flex justify-between items-center bg-gray-50 p-6 rounded-xl border border-gray-200">
+                    <div>
+                      <h3 className="font-bold text-[16px] text-gray-800">Applicant Email Authentication</h3>
+                      <p className="text-[12px] text-gray-600 mt-1">Require OTP verification for new applicant registration.</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-[12px] font-bold ${securitySettings.applicantEmailAuth ? "text-[#376e35]" : "text-gray-500"}`}>{securitySettings.applicantEmailAuth ? "ENABLED" : "DISABLED"}</span>
+                      <ToggleSwitch disabled={isArchiveMode || currentUserRole !== "SuperAdmin"} checked={securitySettings.applicantEmailAuth ?? true} onChange={() => handleToggleSecurity('applicantEmailAuth')} />
+                    </div>
                   </div>
                 </div>
               </div>

@@ -31,6 +31,7 @@ sync_client = MongoClient(MONGO_URI)
 db = sync_client["iiti_db"] 
 user_collection = db["users"]
 applicant_collection = db["applicants"]
+archived_applicant_collection = db["archived-applicants"]
 rubric_collection = db["interviewrubrics"]
 settings_collection = db["systemsettings"]
 audit_collection = db["auditlogs"]

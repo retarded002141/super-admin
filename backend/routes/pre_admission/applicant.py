@@ -7,8 +7,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from datetime import datetime, timedelta
-from routes.admin import fix_ids
-from utils.pdf_generator import generate_application_form_pdf
+from routes.pre_admission.admin import fix_ids
+from utils.pre_admission.pdf_generator import generate_application_form_pdf
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
 from bson import ObjectId
 from passlib.context import CryptContext

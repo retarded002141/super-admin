@@ -7,14 +7,14 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from datetime import datetime, timedelta
-from utils.pdf_generator import generate_application_form_pdf
+from utils.pre_admission.pdf_generator import generate_application_form_pdf
 from fastapi import APIRouter, Depends, HTTPException, Response, Body, Request, UploadFile, File
 from bson import ObjectId
 
 # Import database collections
 from database import (
-    user_collection, applicant_collection, settings_collection, 
-    audit_collection, rubric_collection, notification_collection, student_collection
+    user_collection, applicant_collection, archived_applicant_collection, settings_collection, 
+    audit_collection, notification_collection, student_collection
 )
 from middlewares.auth import get_current_user, admin_only
 
@@ -377,11 +377,14 @@ async def get_public_settings():
         "institutes": settings.get("institutes", [])
     }
 
-@router.post("/reset-system")
+@router.post("/applicants/reset-system")
 async def reset_system(user: dict = Depends(admin_only)):
-    cutoff_date = datetime.utcnow() - timedelta(days=730)
-    applicant_collection.delete_many({"createdAt": {"$lt": cutoff_date}})
-    return {"msg": "System reset successful. Current active records are securely archived."}
+    # Move active applicants to the archive collection
+    all_applicants = list(applicant_collection.find({}))
+    if all_applicants:
+        archived_applicant_collection.insert_many(all_applicants)
+        applicant_collection.delete_many({})
+    return {"msg": "System successfully archived and reset. You will now be logged out."}
 
 
 # ==========================================
@@ -476,6 +479,7 @@ async def get_all_applicants(schoolYear: str = None, user: dict = Depends(admin_
     settings = settings_collection.find_one({"institute": "Admission"}) or {}
     all_courses = settings.get("courses", [])
     all_institutes = settings.get("institutes", [])
+    active_year = settings.get("schoolYear", "")
     
     def get_inst_abbr(inst_val):
         if not inst_val: return "N/A"
@@ -494,7 +498,13 @@ async def get_all_applicants(schoolYear: str = None, user: dict = Depends(admin_
             for c in all_courses 
             if get_inst_abbr(c.get("institute", "")).lower() == clean_inst
         ]
-    
+
+    # Target archive collection if fetching past years
+        target_collection = applicant_collection
+        if schoolYear and schoolYear != active_year:
+            target_collection = archived_applicant_collection
+            query["schoolYear"] = schoolYear
+        
     formatted_applicants = []
     for app in applicant_collection.find(query).sort("createdAt", -1):
         first_choice = app.get("firstChoice", "").strip().lower()
@@ -558,7 +568,7 @@ async def create_applicant(payload: dict = Body(...), user: dict = Depends(admin
 
 @router.get("/archived-years")
 async def get_archived_years(user: dict = Depends(admin_only)):
-    years = applicant_collection.distinct("schoolYear")
+    years = archived_applicant_collection.distinct("schoolYear")
     settings = settings_collection.find_one({"institute": "Admission"}) or {}
     active_year = settings.get("schoolYear", "")
     return sorted([y for y in years if y and y != active_year], reverse=True)

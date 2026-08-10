@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from database import rubric_collection
 from middlewares.auth import admin_only
-from routes.admin import fix_ids 
+from routes.pre_admission.admin import fix_ids 
 from datetime import datetime
 
 router = APIRouter(prefix="/api/admin/rubric", tags=["Rubric"])

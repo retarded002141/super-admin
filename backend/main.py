@@ -3,6 +3,8 @@ from typing import Optional, List
 
 from dotenv import load_dotenv
 import dns.resolver
+from routes.pre_admission import admin, applicant, pdf, rubric
+from routes import notification
 
 load_dotenv()
 dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
@@ -153,10 +155,8 @@ async def get_public_courses():
     return []
 
 # ==========================================
-# IMPORT AND ATTACH PRE-ADMISSION ROUTERS
+# ATTACH MODULAR ROUTERS
 # ==========================================
-from routes import admin, applicant, notification, pdf, rubric
-
 app.include_router(rubric.router)
 app.include_router(admin.router)
 app.include_router(applicant.router)
