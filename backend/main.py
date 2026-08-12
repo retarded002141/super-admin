@@ -3,6 +3,7 @@ from typing import Optional, List
 
 from dotenv import load_dotenv
 import dns.resolver
+from routes import admin_auth
 from routes.pre_admission import admin, applicant, pdf, rubric
 from routes import notification
 
@@ -158,6 +159,7 @@ async def get_public_courses():
 # ATTACH MODULAR ROUTERS
 # ==========================================
 app.include_router(rubric.router)
+app.include_router(admin_auth.router)
 app.include_router(admin.router)
 app.include_router(applicant.router)
 app.include_router(notification.router)
