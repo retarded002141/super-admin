@@ -10,6 +10,10 @@ import Admission from './pages/Pre-Admission/Admission';
 import Applications from './pages/Pre-Admission/Applications';
 import Settings from './pages/Pre-Admission/Settings'
 import EvaluationAdmin from './pages/Evaluation/EvaluationAdmin'
+import EnrollmentDashboard from './pages/Enrollment/Dashboard';
+import EnrollmentStudents from './pages/Enrollment/StudentList';
+import EnrollmentCurriculum from './pages/Enrollment/Curriculum';
+import EnrollmentSections from './pages/Enrollment/SectionList';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -34,11 +38,14 @@ export default function App() {
 
   const getTabTitle = () => {
     switch (activeTab) {
-      case 'pre-admission-dashboard': return 'Pre-Admission Dashboard';      
+      case 'pre-admission-dashboard': return 'Pre-Admission Dashboard';
       case 'pre-admission-applications': return 'Pre-Admission Applications';
       case 'pre-admission-admission': return 'Pre-Admission Admission';
       case 'pre-admission-settings': return 'Pre-Admission Settings';
-      case 'pre-enrollment': return 'Pre-Enrollment Management';
+      case 'pre-enrollment-dashboard': return 'Enrollment Dashboard';
+      case 'pre-enrollment-students': return 'Enrollment - Students';
+      case 'pre-enrollment-curriculum': return 'Enrollment - Curriculum';
+      case 'pre-enrollment-sections': return 'Enrollment - Sections';
       case 'pre-advising': return 'Pre-Advising & Scheduling';
       case 'evaluation': return 'Faculty & Course Evaluation';
       case 'grading': return 'Grading & Marks System';
@@ -52,6 +59,7 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
+
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -60,10 +68,15 @@ export default function App() {
 
       <div style={{ flex: 1 }}>
         <Header title={getTabTitle()} />
-        <main style={{ marginLeft: '260px', padding: activeTab.startsWith('pre-admission') ? '10px' : '32px' }}>
+        <main style={{ marginLeft: '260px', padding: activeTab.startsWith('pre-admission') || activeTab.startsWith('pre-enrollment-') ? '10px' : '32px' }}>
           {activeTab === 'user-management' && <UserManagement />}
           {activeTab === 'broadcast' && <Broadcast />}
           {activeTab === 'students-request' && <StudentsRequest />}
+
+          {activeTab === 'pre-enrollment-dashboard' && <EnrollmentDashboard />}
+          {activeTab === 'pre-enrollment-students' && <EnrollmentStudents />}
+          {activeTab === 'pre-enrollment-curriculum' && <EnrollmentCurriculum />}
+          {activeTab === 'pre-enrollment-sections' && <EnrollmentSections />}
 
           {activeTab === 'pre-admission-dashboard' && <Dashboard navigateToTab={navigateToTab} />}
           {activeTab === 'pre-admission-applications' && <Applications navigateToTab={navigateToTab} navigationState={navigationState} />}
@@ -72,7 +85,7 @@ export default function App() {
           {activeTab === 'evaluation' && <EvaluationAdmin />}
 
           {/* Removed 'students-request' and 'evaluation' from this fallback list below */}
-          {['pre-enrollment', 'pre-advising', 'grading'].includes(activeTab) && (
+          {['pre-advising', 'grading'].includes(activeTab) && (
             <div className="placeholder-view">
               Module for <strong>{getTabTitle()}</strong> is ready to be built next.
             </div>
