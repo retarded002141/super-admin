@@ -4,13 +4,20 @@ import '../../stylesheets/Portal/sidebar.css';
 
 export function Sidebar({ activeTab, setActiveTab, onLogout }) {
   const [isPreAdmissionExpanded, setIsPreAdmissionExpanded] = useState(false);
+  const [isPreEnrollmentExpanded, setIsPreEnrollmentExpanded] = useState(false);
   const [isPortalExpanded, setIsPortalExpanded] = useState(false);
 
   const mainMenuItems = [
-    { id: 'pre-enrollment', label: 'Pre-Enrollment' },
     { id: 'pre-advising', label: 'Pre-Advising' },
     { id: 'evaluation', label: 'Evaluation System' },
     { id: 'grading', label: 'Grading System' },
+  ];
+
+  const preEnrollmentMenuItems = [
+    { id: 'pre-enrollment-dashboard', label: 'Dashboard' },
+    { id: 'pre-enrollment-students', label: 'Students' },
+    { id: 'pre-enrollment-curriculum', label: 'Curriculum' },
+    { id: 'pre-enrollment-sections', label: 'Sections' },
   ];
 
   const preAdmissionMenuItems = [
@@ -51,6 +58,31 @@ export function Sidebar({ activeTab, setActiveTab, onLogout }) {
           {isPreAdmissionExpanded && (
             <div className="submenu">
               {preAdmissionMenuItems.map((subItem) => (
+                <button
+                  key={subItem.id}
+                  onClick={() => setActiveTab(subItem.id)}
+                  className={`submenu-item ${activeTab === subItem.id ? 'active' : ''}`}
+                >
+                  {subItem.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Pre-Enrollment Dropdown */}
+        <div className="nav-group">
+          <button
+            onClick={() => setIsPreEnrollmentExpanded(!isPreEnrollmentExpanded)}
+            className={`nav-item nav-item-dropdown ${activeTab.startsWith('pre-enrollment-') ? 'active' : ''}`}
+          >
+            <span>Pre-Enrollment</span>
+            <span className={`dropdown-arrow ${isPreEnrollmentExpanded ? 'open' : ''}`}>▼</span>
+          </button>
+
+          {isPreEnrollmentExpanded && (
+            <div className="submenu">
+              {preEnrollmentMenuItems.map((subItem) => (
                 <button
                   key={subItem.id}
                   onClick={() => setActiveTab(subItem.id)}
