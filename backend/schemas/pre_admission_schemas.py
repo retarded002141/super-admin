@@ -1,32 +1,11 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel
-from typing import Optional
+from schemas.global_schemas import CourseModel, InstituteModel
 
-# 1. ADMIN & AUDIT LOG MODELS
-
-class AdminModel(BaseModel):
-    username: str
-    email: EmailStr
-    password: str
-    role: str = "Admin"
-    image: Optional[str] = None
-    institute: str = "Admission"
-    resetPasswordToken: Optional[str] = None
-    resetPasswordExpire: Optional[datetime] = None
-
-class AuditLogModel(BaseModel):
-    user: str
-    role: str = "Admin"
-    institute: str = "Admission"
-    action: str
-    status: str = "Success"
-    details: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-
+# ==========================================
 # APPLICANT MODELS
-
+# ==========================================
 class DocumentModel(BaseModel):
     filename: Optional[str] = None
     originalName: Optional[str] = None
@@ -46,7 +25,7 @@ class ApplicantModel(BaseModel):
     interviewSlot: Optional[str] = None
     interviewScore: Optional[float] = None
     isInterviewed: bool = False
-    interviewRatings: Dict[str, Any] = {}
+    interviewRatings: Dict[str, Any] = Field(default_factory=dict)
     interviewer: str = ""
     examScore: Optional[float] = None
     gwa: Optional[float] = None
@@ -100,71 +79,14 @@ class ApplicantModel(BaseModel):
     collegeSchool: Optional[str] = None
     collegeAddress: Optional[str] = None
     collegeYear: Optional[str] = None
-    documents: List[DocumentModel] = []
+    documents: List[DocumentModel] = Field(default_factory=list)
     otpCodeHash: Optional[str] = None
     otpExpiresAt: Optional[datetime] = None
     isEmailSent: bool = False
 
-class UserModel(BaseModel):
-    username: str
-    email: EmailStr
-    password: str
-    role: str = "Applicant"
-    status: str = "Admitted"
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-    lastLogin: Optional[datetime] = None
-
-class StudentProfileModel(BaseModel):
-    applicant_id: str
-    first_name: str
-    middle_name: Optional[str] = None
-    last_name: str
-    course: Optional[str] = None
-    section: Optional[str] = None
-    school_year: Optional[str] = None
-    birth_date: Optional[str] = None
-    contact_number: Optional[str] = None
-    permanent_address: Optional[str] = None
-    present_address: Optional[str] = None
-    father_name: Optional[str] = None
-    father_contact: Optional[str] = None
-    mother_name: Optional[str] = None
-    mother_contact: Optional[str] = None
-    elementary_school: Optional[str] = None
-    elementary_address: Optional[str] = None
-    junior_high_school: Optional[str] = None
-    junior_high_address: Optional[str] = None
-    senior_high_school: Optional[str] = None
-    senior_high_address: Optional[str] = None
-    college_school: Optional[str] = None
-    college_address: Optional[str] = None
-
-# INSTITUTES & COURSES MODELS
-
-class InstituteModel(BaseModel):
-    abbreviation: str
-    name: str
-    address: str = ""
-    openingDays: str = ""
-    openingTime: str = ""
-    closingTime: str = ""
-    dailyLimit: Optional[int] = 0
-
-class CourseModel(BaseModel):
-    institute: str
-    abbreviation: str = ""
-    name: str
-    limit: int = 0
-
-# SYSTEM, NOTIFICATIONS & SCHEDULING
-
-class NotificationModel(BaseModel):
-    title: str
-    message: str
-    type: str = "info"
-    isUnread: bool = True
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-
+# ==========================================
+# PRE-ADMISSION SCHEDULING & ASSESSMENT
+# ==========================================
 class SlotModel(BaseModel):
     date: str
     time: str
@@ -194,7 +116,7 @@ class RolePermissionFlags(BaseModel):
     activityLogs: bool = True
     manageAdmins: bool = True
 
-class SystemSettingsModel(BaseModel):
+class AdmissionSettingsModel(BaseModel):
     institute: str = "Admission"
     systemName: str = "Pre-Admission"
     schoolName: str = "Baliwag Polytechnic College (BTECH)"
@@ -205,40 +127,21 @@ class SystemSettingsModel(BaseModel):
     semester: str = "1st Semester"
     applicationStartDate: Optional[datetime] = None
     applicationDeadline: Optional[datetime] = None
-    security: Dict[str, bool] = {"twoFactorAuth": False}
+    security: Dict[str, bool] = Field(default_factory=lambda: {"twoFactorAuth": False})
     termStart: Optional[datetime] = None
     termEnd: Optional[datetime] = None
-    courses: List[CourseModel] = []
-    institutes: List[InstituteModel] = []
-    
-    notifications: Dict[str, bool] = {
+    courses: List[CourseModel] = Field(default_factory=list)
+    institutes: List[InstituteModel] = Field(default_factory=list)
+    notifications: Dict[str, bool] = Field(default_factory=lambda: {
         "emailNewApp": True,
         "emailBCET": False,
         "emailDeadline": True,
         "sysMaintenance": True,
         "docUploads": True
-    }
-    rolePermissions: Dict[str, RolePermissionFlags] = {
+    })
+    rolePermissions: Dict[str, RolePermissionFlags] = Field(default_factory=lambda: {
         "SuperAdmin": RolePermissionFlags(),
         "Admin": RolePermissionFlags(admissionStatus=False, systemProfile=False, systemMaintenance=False, manageAdmins=False)
-    }
+    })
     updatedBy: str = "System"
     lastUpdated: datetime = Field(default_factory=datetime.utcnow)
-
-# 5. SUPER ADMIN & ANNOUNCEMENTS
-
-class AnnouncementSchema(BaseModel):
-    category: str = "iiti"
-    title: str
-    description: str
-    image: Optional[str] = ""
-    date: str
-    dateValue: Optional[str] = ""
-    published: Optional[bool] = True
-
-class AnnouncementUpdateSchema(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    image: Optional[str] = None
-    date: Optional[str] = None
-    dateValue: Optional[str] = None

@@ -181,7 +181,7 @@ async def delete_institute(id: str, user: dict = Depends(admin_only)):
 async def get_all_applicants(schoolYear: str = None, user: dict = Depends(admin_only)):
     query = {
         "isSubmitted": True,
-        "firstChoice": {"$regex": "^Bachelor of Science in Information Technology$", "$options": "i"}
+        # "firstChoice": {"$regex": "^Bachelor of Science in Information Technology$", "$options": "i"}
     }
     
     # Get logged-in admin's actual profile details

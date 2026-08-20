@@ -5,10 +5,11 @@ import { Header } from './components/Portal/Header';
 import { UserManagement } from './pages/Portal/UserManagement';
 import { Broadcast } from './pages/Portal/Broadcast';
 import { StudentsRequest } from './pages/Portal/StudentsRequest';
-import Dashboard from './pages/Pre-Admission/Dashboard';
-import Admission from './pages/Pre-Admission/Admission';
-import Applications from './pages/Pre-Admission/Applications';
-import Settings from './pages/Pre-Admission/Settings'
+import Dashboard from './pages/Pre-Admission/pages/Dashboard';
+import Admission from './pages/Pre-Admission/pages/Admission';
+import Applications from './pages/Pre-Admission/pages/Applications';
+import Settings from './pages/Pre-Admission/pages/Settings'
+import { ToastProvider } from './pages/Pre-Admission/components/Toast.jsx';
 import EvaluationAdmin from './pages/Evaluation/EvaluationAdmin'
 import EnrollmentDashboard from './pages/Enrollment/Dashboard';
 import EnrollmentStudents from './pages/Enrollment/StudentList';
@@ -78,10 +79,10 @@ export default function App() {
           {activeTab === 'pre-enrollment-curriculum' && <EnrollmentCurriculum />}
           {activeTab === 'pre-enrollment-sections' && <EnrollmentSections />}
 
-          {activeTab === 'pre-admission-dashboard' && <Dashboard navigateToTab={navigateToTab} />}
-          {activeTab === 'pre-admission-applications' && <Applications navigateToTab={navigateToTab} navigationState={navigationState} />}
-          {activeTab === 'pre-admission-admission' && <Admission navigateToTab={navigateToTab} />}
-          {activeTab === 'pre-admission-settings' && <Settings navigateToTab={navigateToTab} />}
+          {activeTab === 'pre-admission-dashboard' && <ToastProvider><Dashboard navigateToTab={navigateToTab} /></ToastProvider>}
+          {activeTab === 'pre-admission-applications' && <ToastProvider><Applications navigateToTab={navigateToTab} navigationState={navigationState} /></ToastProvider>}
+          {activeTab === 'pre-admission-admission' && <ToastProvider><Admission navigateToTab={navigateToTab} /></ToastProvider>}
+          {activeTab === 'pre-admission-settings' && <ToastProvider><Settings navigateToTab={navigateToTab} /></ToastProvider>}
           {activeTab === 'evaluation' && <EvaluationAdmin />}
 
           {/* Removed 'students-request' and 'evaluation' from this fallback list below */}

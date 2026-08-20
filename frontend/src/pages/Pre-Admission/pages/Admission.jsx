@@ -1,10 +1,12 @@
 import { useState, useRef, useMemo, useEffect } from "react";
-import api from "../../services/api";
+import api from "../../../services/api";
 import {
   FaSearch, FaFilter, FaFileExport, FaFileImport, FaCheck, FaChevronDown,
   FaEye, FaTimes, FaSearchPlus, FaSearchMinus, FaRedo, FaFileDownload, FaPrint, FaPlus, FaEnvelope
 } from "react-icons/fa";
 import { FileText, CheckCircle, MessageSquare, Eye, Edit, MailCheck } from "lucide-react";
+import { useToast } from "../context/ToastContext.jsx";
+import { ButtonSpinner, PageLoader } from "../components/Loaders.jsx";
 
 import * as XLSX from "xlsx-js-style";
 
@@ -130,10 +132,10 @@ const CustomCheckbox = ({ checked, onChange, disabled }) => (
 
 const normalizeAdmissionRemark = (status) => {
   const normalized = (status || "Pending").toString().trim().toUpperCase();
-  if (normalized === "CONFIRMED") return "Confirmed";
+  if (normalized === "CONFIRMED" || normalized === "ACCEPTED") return "Confirmed";
   if (normalized === "PASSED" || normalized === "ADMITTED") return "Passed";
   if (normalized === "FAILED" || normalized === "REJECTED") return "Failed";
-  if (normalized === "FORFEIT" || normalized === "NO-SHOW") return "Forfeit";
+  if (normalized === "FORFEIT" || normalized === "NO-SHOW" || normalized === "DECLINED") return "Forfeit";
   return "Pending";
 };
 
@@ -153,8 +155,8 @@ const StatusTag = ({ status }) => {
 
 const FormField = ({ label, value, className = "" }) => (
   <div className={`flex flex-col ${className}`}>
-    <label className="text-[11px] font-bold text-gray-700 uppercase mb-1">{label}</label>
-    <div className="h-10 w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-xs text-gray-800 uppercase truncate cursor-default flex items-center shadow-sm">
+    <label className="text-[10px] font-bold text-gray-700 uppercase mb-1">{label}</label>
+    <div className="h-[36px] w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-[12px] text-gray-800 uppercase truncate cursor-default flex items-center shadow-sm">
       {value || "N/A"}
     </div>
   </div>
@@ -162,11 +164,12 @@ const FormField = ({ label, value, className = "" }) => (
 
 const SectionHeader = ({ title }) => (
   <div className="mb-4 pb-2 border-b border-gray-200">
-    <h3 className="text-xs font-black text-[#376e35] uppercase tracking-wide">{title}</h3>
+    <h3 className="text-[12px] font-black text-[#376e35] uppercase tracking-wide">{title}</h3>
   </div>
 );
 
 export default function Admission({ navigateToTab }) {
+  const { toast } = useToast();
 
   // --- STATES ---
   const [loading, setLoading] = useState(true);
@@ -180,7 +183,7 @@ export default function Admission({ navigateToTab }) {
   const [institutesList, setInstitutesList] = useState([]);
 
   // Role and Institute State
-  const [userRole, setUserRole] = useState("SuperAdmin");
+  const [userRole, setUserRole] = useState("Admin");
   const [userInstitute, setUserInstitute] = useState("IITI");
 
   // Filter States
@@ -301,6 +304,7 @@ export default function Admission({ navigateToTab }) {
         api.get('/public/settings')
       ]);
 
+      setUserRole(profileRes.data.role || "Admin");
       setUserInstitute(profileRes.data.institute || "IITI");
       setCoursesList(coursesRes.data || []);
       setInstitutesList(institutesRes.data || []);
@@ -349,11 +353,12 @@ export default function Admission({ navigateToTab }) {
           const tempApp = { ...safe, examScore: app.examScore || 0, interviewScore: app.interviewScore || 0 };
           const totalPerc = parseFloat(calculateTotal(tempApp));
 
-          // Start with the actual status saved in the database
           let admStatus = app.admissionStatus || app.status || "Pending";
+          const savedRemarks = app.admissionRemarks || "";
 
           // Compute Passed/Failed if admission status is not Confirmed or Forfeit
-          if (admStatus !== "Confirmed" && admStatus !== "Forfeit") {
+          // Also check admissionRemarks since admissionStatus stores "Admitted" for confirmed
+          if (admStatus !== "Confirmed" && admStatus !== "Forfeit" && savedRemarks !== "Confirmed" && savedRemarks !== "Forfeit") {
             if (intStatus === "Pending" || bcetStatus === "Pending") {
               admStatus = "Pending";
             } else if (totalPerc >= 75) {
@@ -361,6 +366,10 @@ export default function Admission({ navigateToTab }) {
             } else {
               admStatus = "Failed";
             }
+          } else if (savedRemarks === "Confirmed") {
+            admStatus = "Confirmed";
+          } else if (savedRemarks === "Forfeit") {
+            admStatus = "Forfeit";
           }
 
           return {
@@ -372,7 +381,7 @@ export default function Admission({ navigateToTab }) {
             location: app.location || app.presentCity?.toUpperCase() || "N/A",
             interviewRemarks: intStatus,
             bcetRemarks: bcetStatus,
-            admissionRemarks: admStatus,
+            admissionRemarks: savedRemarks || admStatus,
             admissionStatus: admStatus,
             status: admStatus,
 
@@ -453,7 +462,7 @@ export default function Admission({ navigateToTab }) {
     return result;
   }, [applicants, searchQuery, typeFilter, statusFilter, courseFilter, userRole, instituteFilter, coursesList]);
 
-  const eligibleApplicants = filteredApplicants.filter((a) => a.admissionRemarks !== "Pending" && a.admissionStatus !== "Forfeit" && a.admissionRemarks !== "Failed" && a.admissionStatus !== "Failed");
+  const eligibleApplicants = filteredApplicants.filter((a) => a.admissionRemarks !== "Pending" && a.admissionStatus !== "Forfeit");
   const isAllSelected = eligibleApplicants.length > 0 && eligibleApplicants.every((a) => selectedIds.includes(a.id));
 
   // --- HANDLERS ---
@@ -499,46 +508,44 @@ export default function Admission({ navigateToTab }) {
 
   const handleRowAction = async (id, newStatus) => {
     const app = applicants.find(a => a.id === id);
-    
-    // Status is ONLY 'Admitted' when explicitly Confirmed. Otherwise it remains unchanged.
-    const newBaseStatus = newStatus === "Confirmed" ? "Admitted" : app.status;
+    let dbStatus = newStatus;
+    if (newStatus === "Passed") dbStatus = "Admitted";
+    if (newStatus === "Failed") dbStatus = "Failed";
 
-    setApplicants((prev) => prev.map((a) => (a.id === id ? {
-        ...a,
-        admissionRemarks: newStatus,
-        admissionStatus: newStatus,
-        status: newBaseStatus
-    } : a)));
+    setApplicants((prev) => prev.map((a) => (a.id === id ? { ...a, admissionRemarks: newStatus, admissionStatus: newStatus, status: newStatus } : a)));
     setSelectedIds((prev) => prev.filter((sid) => sid !== id));
 
     try {
-        const payload = { admissionStatus: newStatus, status: newBaseStatus };
-        await api.put(`/admin/applicant/${app.rawId}/status`, payload)
-            .catch(() => api.patch(`/admin/applicant/${app.rawId}/status`, payload));
-    } catch(e) { console.error(e); }
+      const res = await api.put(`/admin/applicant/${app.rawId}/status`, { status: dbStatus })
+        .catch(() => api.patch(`/admin/applicant/${app.rawId}/status`, { status: dbStatus }));
+
+      const updatedApplicant = res?.data?.applicant;
+      if (updatedApplicant && updatedApplicant.applicantId) {
+        setApplicants((prev) => prev.map((a) =>
+          a.rawId === app.rawId
+            ? { ...a, id: updatedApplicant.applicantId }
+            : a
+        ));
+      }
+    } catch (e) { console.error(e); }
   };
 
   const handleBulkAction = async (newStatus) => {
-    const isConfirming = newStatus === "Confirmed";
+    let dbStatus = newStatus;
+    if (newStatus === "Passed") dbStatus = "Admitted";
+    if (newStatus === "Failed") dbStatus = "Failed";
 
-    setApplicants((prev) => prev.map((app) => (selectedIds.includes(app.id) ? {
-        ...app,
-        admissionRemarks: newStatus,
-        admissionStatus: newStatus,
-        status: isConfirming ? "Admitted" : app.status
-    } : app)));
+    setApplicants((prev) => prev.map((app) => (selectedIds.includes(app.id) ? { ...app, admissionRemarks: newStatus, admissionStatus: newStatus, status: newStatus } : app)));
 
     try {
-        const targets = applicants.filter(a => selectedIds.includes(a.id)).map(a => a.rawId);
-        const payload = {
-            ids: targets,
-            admissionStatus: newStatus,
-            ...(isConfirming && { status: "Admitted" })
-        };
+      const targets = applicants.filter(a => selectedIds.includes(a.id)).map(a => a.rawId);
+      await api.put(`/admin/applicants/bulk-status`, { ids: targets, status: dbStatus })
+        .catch(() => api.patch(`/admin/applicants/bulk-status`, { ids: targets, status: dbStatus }));
 
-        await api.put(`/admin/applicants/bulk-status`, payload)
-            .catch(() => api.patch(`/admin/applicants/bulk-status`, payload));
-    } catch(e) { console.error(e); }
+      if (newStatus === "Confirmed" || newStatus === "Forfeit") {
+        await fetchApplicants();
+      }
+    } catch (e) { console.error(e); }
 
     setSelectedIds([]);
   };
@@ -562,7 +569,7 @@ export default function Admission({ navigateToTab }) {
   const openEmailModal = () => {
     const targets = getTargetApplicants();
     if (targets.length === 0) {
-      alert("Please select at least one applicant using the checkboxes before sending emails.");
+      toast.warning("Please select at least one applicant using the checkboxes before sending emails.");
       return;
     }
 
@@ -639,12 +646,12 @@ export default function Admission({ navigateToTab }) {
         targets.some(t => t.id === app.id) ? { ...app, isEmailSent: true } : app
       ));
 
-      alert(`Successfully generated and sent ${targets.length} individually personalized email(s)!`);
+      toast.success(`Successfully generated and sent ${targets.length} individually personalized email(s)!`);
       setIsEmailModalOpen(false);
       setSelectedIds([]);
     } catch (err) {
       console.error("Failed to send emails:", err);
-      alert("An error occurred while sending emails. Please check the console.");
+      toast.error("An error occurred while sending emails. Please check the console.");
     }
   };
 
@@ -664,19 +671,20 @@ export default function Admission({ navigateToTab }) {
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         const validRows = rows.filter(row => row.length > 0);
 
-        if (validRows.length < 2) { alert("File appears empty or invalid."); setLoading(false); return; }
+        if (validRows.length < 2) { toast.warning("File appears empty or invalid."); setLoading(false); return; }
 
         const headers = validRows[0].map(h => String(h || "").toLowerCase());
         const nameIdx = headers.findIndex(h => h.includes('name'));
         const scoreIdx = headers.findIndex(h => h.includes('score') || h.includes('bcet') || h.includes('grade') || h.includes('remark'));
 
         if (nameIdx === -1 || scoreIdx === -1) {
-          alert("Could not find a 'Name' and 'BCET/Score/Remarks' column. Please check your Excel file headers.");
+          toast.warning("Could not find a 'Name' and 'BCET/Score/Remarks' column. Please check your Excel file headers.");
           setLoading(false); return;
         }
 
         let matchCount = 0;
         const updatesToPush = [];
+        const emailsToSend = [];
         const updatedApplicants = [...applicants];
 
         for (let i = 1; i < validRows.length; i++) {
@@ -746,6 +754,28 @@ export default function Admission({ navigateToTab }) {
               examScore: numericScore,
               status: newAdmissionStatus === "Passed" ? "Admitted" : (newAdmissionStatus === "Failed" ? "Failed" : "Pending")
             });
+
+            if (newAdmissionStatus === "Passed" && !currentApplicant.isEmailSent) {
+              const appType = currentApplicant.profile?.appDetails?.applicantType || currentApplicant.type || "";
+              const reqs = getEmailRequirements(appType);
+              const toEmail = currentApplicant.profile?.personal?.email || "";
+              const upperName = (currentApplicant.name || "").toUpperCase();
+              const applicantNo = currentApplicant.id || "N/A";
+              const course = currentApplicant.profile?.appDetails?.firstChoice || "N/A";
+              const currentAY = activeYear || "2026-2027";
+
+              const defaultMsg = `Dear ${upperName},\n\nCongratulations! We are pleased to inform you that you have successfully passed the admission process and officially accepted to Baliwag Polytechnic College for the Academic Year ${currentAY}.\n\nApplicant No.: ${applicantNo}\nName: ${upperName}\nCourse: ${course}\n\nTo officially accept your offer of admission, please visit our Institute Office to reserve your slot or visit the portal.\n\nThe enrollment schedule will be posted on our FB Page BTECH Admission Office.\n\nPlease prepare the following documents before your Enrollment Schedule:\n${reqs}\n\nNote:\nPlease be sure to enroll on your scheduled date. If you do not show up on time, you may lose your slot to another student. Please also bring a long brown envelope for your documents.\n\nBest regards,\n\nOffice of Admissions\nBaliwag Polytechnic College`;
+
+              emailsToSend.push({
+                email: toEmail,
+                subject: "Congratulations: Admission Qualification Notice",
+                message: defaultMsg,
+                applicantId: currentApplicant.rawId
+              });
+
+              updatedApplicants[appIndex].isEmailSent = true;
+            }
+
             matchCount++;
           }
         }
@@ -761,12 +791,21 @@ export default function Admission({ navigateToTab }) {
           }
         }
 
+        if (emailsToSend.length > 0) {
+          try {
+            await api.post('/admin/emails/send-bulk', { emails: emailsToSend });
+            console.log(`Automatically sent ${emailsToSend.length} admission qualification emails.`);
+          } catch (emailErr) {
+            console.error("Failed to auto-send emails:", emailErr);
+          }
+        }
+
         setApplicants(updatedApplicants);
-        alert(`Import successful! Evaluated and fully saved ${matchCount} applicants to the database.`);
+        toast.success(`Import successful! Evaluated and fully saved ${matchCount} applicants to the database.${emailsToSend.length > 0 ? `\n\nAutomatically sent emails to ${emailsToSend.length} newly passed applicant(s).` : ''}`);
 
       } catch (err) {
         console.error("Error processing Excel file:", err);
-        alert("Failed to parse the Excel file.");
+        toast.error("Failed to parse the Excel file.");
       } finally {
         setLoading(false);
         if (fileInputRef.current) fileInputRef.current.value = null;
@@ -1262,22 +1301,28 @@ export default function Admission({ navigateToTab }) {
     return cols;
   };
 
+  if (loading && applicants.length === 0) {
+    return <PageLoader message="Loading admission data..." />;
+  }
+
   return (
     <div className="h-[calc(100vh-90px)] w-full bg-gray-50 font-sans overflow-hidden flex flex-col transition-all duration-300 ease-in-out ml-2">
 
-      <main className="flex-1 flex flex-col p-[10px] w-full h-full relative">
+      <main className="flex-1 flex flex-col px-6 py-4 w-full h-full relative">
         <div className="shrink-0">
           <div className="flex justify-between items-start mb-4">
             <div className="w-full">
 
-              {isArchiveMode ? (
-                <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-1.5 rounded-md mb-2 w-full flex justify-between items-center shadow-sm">
-                  <span className="font-bold">⚠️ YOU ARE IN ARCHIVE MODE. Viewing read-only data for AY {activeYear}.</span>
-                  <button onClick={exitArchiveMode} className="bg-red-700 text-white px-3 py-1 rounded text-xs uppercase font-black hover:bg-red-800 transition">Return to Live</button>
+              {isArchiveMode && (
+                <div className="mt-4 mb-2 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex justify-between items-center">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <span className="text-amber-500">⚠</span>
+                    Archive mode — viewing read-only data for A.Y. {activeYear}
+                  </div>
+                  <button onClick={exitArchiveMode} className="text-xs font-semibold bg-amber-600 text-white px-3 py-1.5 rounded-md hover:bg-amber-700 transition">
+                    Return to Live
+                  </button>
                 </div>
-              ) : (
-                <p className="text-gray-800">
-                </p>
               )}
             </div>
           </div>
@@ -1299,7 +1344,7 @@ export default function Admission({ navigateToTab }) {
             <div className="relative w-full md:w-auto" ref={filterRef} onMouseLeave={() => setShowFilter(false)}>
               <button
                 onClick={() => setShowFilter((v) => !v)}
-                className="bg-white px-3 py-1.5 rounded-md shadow flex items-center gap-2 font-semibold"
+                className="bg-white px-[14px] py-[6px] rounded-lg shadow flex items-center gap-2 font-semibold"
               >
                 <FaFilter /> Filter
               </button>
@@ -1318,8 +1363,8 @@ export default function Admission({ navigateToTab }) {
                     </select>
 
                     <div className="flex justify-between gap-2">
-                      <button onClick={() => setShowFilter(false)} className="flex-1 py-1.5 bg-[#376e35] text-white rounded text-xs font-bold shadow-sm hover:bg-[#5c9c5a] transition">Apply</button>
-                      <button onClick={() => { setStatusFilter("All"); setCourseFilter("All"); setTypeFilter(""); setSearchQuery(""); setInstituteFilter("All"); }} className="flex-1 py-1.5 bg-gray-200 text-gray-700 rounded text-xs font-bold hover:bg-gray-300 transition shadow-sm">Clear</button>
+                      <button onClick={() => setShowFilter(false)} className="flex-1 py-1 bg-[#376e35] text-white rounded text-xs font-bold">Apply</button>
+                      <button onClick={() => { setStatusFilter("All"); setCourseFilter("All"); setTypeFilter(""); setSearchQuery(""); setInstituteFilter("All"); }} className="flex-1 py-1 bg-gray-100 rounded text-xs font-bold hover:bg-gray-200">Clear</button>
                     </div>
                   </div>
                 </div>
@@ -1361,29 +1406,31 @@ export default function Admission({ navigateToTab }) {
 
                 return (
                   <>
-                    {/* SEND EMAILS */}
-                    <button
-                      onClick={openEmailModal}
-                      className="bg-blue-700 text-white px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 font-[600] hover:bg-blue-500 transition"
-                    >
-                      <FaEnvelope size={14} /> Send Emails
-                    </button>
+                    {/* SEND EMAILS: Only visible if nothing is selected OR only Passed applicants are selected */}
+                    {(selectedIds.length === 0 || isAllPassed) && (
+                      <button
+                        onClick={openEmailModal}
+                        className="bg-blue-600 text-white px-[14px] py-1.5 rounded-lg shadow-sm flex items-center gap-2 font-black hover:bg-blue-700 transition"
+                      >
+                        <FaEnvelope size={14} /> Send Emails
+                      </button>
+                    )}
 
-                    {/* BULK CONFIRM: Only visible to SuperAdmin if ALL selected are Passed AND have already been emailed */}
-                    {userRole === "SuperAdmin" && isAllPassed && isAllEmailed && (
+                    {/* BULK CONFIRM: Only visible if ALL selected are Passed AND have already been emailed */}
+                    {isAllPassed && isAllEmailed && (
                       <button
                         onClick={() => triggerConfirmModal('bulk', 'Confirmed')}
-                        className="bg-[#376e35] text-white px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 font-[600] hover:bg-[#2b562a] transition"
+                        className="bg-green-600 text-white px-[14px] py-[6px] rounded-lg shadow-sm flex items-center gap-2 font-black hover:bg-green-700 transition"
                       >
                         <FaCheck size={14} /> Bulk Confirm
                       </button>
                     )}
 
-                    {/* BULK FORFEIT: Only visible to SuperAdmin if ALL selected are Passed AND have already been emailed */}
-                    {userRole === "SuperAdmin" && isAllPassed && isAllEmailed && (
+                    {/* BULK FORFEIT: Only visible if ALL selected are Passed AND have already been emailed */}
+                    {isAllPassed && isAllEmailed && (
                       <button
                         onClick={() => triggerConfirmModal('bulk', 'Forfeit')}
-                        className="bg-gray-700 text-white px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 font-[600] hover:bg-gray-800 transition"
+                        className="bg-gray-800 text-white px-[14px] py-[6px] rounded-lg shadow-sm flex items-center gap-2 font-black hover:bg-black transition"
                       >
                         <FaTimes size={14} /> Bulk Forfeit Slots
                       </button>
@@ -1393,7 +1440,7 @@ export default function Admission({ navigateToTab }) {
                     {isAllFailed && (
                       <button
                         onClick={() => triggerConfirmModal('bulk', 'Passed')}
-                        className="bg-[#376e35] text-white px-3 py-1.5 rounded-md shadow-sm flex items-center gap-2 font-[600] hover:bg-[#2b562a] transition"
+                        className="bg-green-600 text-white px-[14px] py-[6px] rounded-lg shadow-sm flex items-center gap-2 font-black hover:bg-green-700 transition"
                       >
                         <FaCheck size={14} /> Bulk Pass
                       </button>
@@ -1408,9 +1455,9 @@ export default function Admission({ navigateToTab }) {
                   <button
                     onClick={() => { if (!isArchiveMode) fileInputRef.current?.click(); }}
                     disabled={isArchiveMode}
-                    className={`px-3 py-2 rounded-lg shadow-sm flex items-center gap-2 font-[600] transition ${isArchiveMode
+                    className={`px-3 py-2 rounded-lg shadow-sm flex items-center gap-2 font-black transition ${isArchiveMode
                       ? 'bg-gray-400 text-white opacity-60 cursor-not-allowed'
-                      : 'bg-[#376e35] text-white hover:bg-[#2b562a]'
+                      : 'bg-[#376e35] text-white hover:bg-[#3a7538]'
                       }`}
                   >
                     <FaFileImport size={14} /> Import BCET
@@ -1429,28 +1476,28 @@ export default function Admission({ navigateToTab }) {
         <div className="flex-1 relative bg-white rounded-sm shadow overflow-hidden mt-2">
           <div className="absolute inset-0 overflow-y-auto">
             <table className="w-full border-collapse">
-              <thead className="bg-[#E4F6E2] text-[#2e522a] sticky top-0 z-20">
-                <tr className="text-[13.5px] border-b border-[#cbd5e1]">
-                  <th className="px-[16px] py-[12px] text-left text-[14px] font-bold">ID</th>
+              <thead className="bg-[#E4F6E2] text-[#2e522a] border-b border-gray-200 sticky top-0 z-20">
+                <tr className="text-xs uppercase tracking-wide h-11">
+                  <th className="px-[14px] py-[6px] text-left text-[11px] font-bold">ID</th>
 
-                  <th className="px-[16px] py-[12px] text-left text-[14px] font-bold whitespace-nowrap">
-                    <div className="relative inline-block pr-1 mt-1">
+                  <th className="px-[14px] py-[6px] text-[11px] text-left font-bold whitespace-nowrap">
+                    <div className="relative inline-block pr-1">
                       Applicant Name
-                      <span className="absolute -top-2 -right-5 bg-yellow-300 text-yellow-900 rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center text-[10px] font-black shadow-sm leading-none" title="Total Applicants">
+                      <span className="ml-1.5 bg-white text-[#2e522a] rounded-full h-5 min-w-[20px] px-1.5 inline-flex items-center justify-center text-[10px] font-bold leading-none border border-gray-200" title="Total Applicants">
                         {filteredApplicants.length}
                       </span>
                     </div>
                   </th>
-                  <th className="px-[16px] py-[12px] text-center text-[14px] font-bold ">Interview Score</th>
-                  <th className="px-[16px] py-[12px] text-center text-[14px] font-bold ">BCET Score</th>
-                  <th className="px-[16px] py-[12px] text-center text-[14px] font-bold ">GWA</th>
-                  <th className="px-[16px] py-[12px] text-center text-[14px] font-bold ">Total (%)</th>
-                  <th className="px-[16px] py-[12px] text-center text-[14px] font-bold ">Remarks</th>
-                  <th className="px-[16px] py-[12px] text-center text-[14px] font-bold ">Action</th>
+                  <th className="px-[14px] py-[6px] text-[11px] text-center font-bold">Interview Score</th>
+                  <th className="px-[14px] py-[6px] text-[11px] font-bold text-center">BCET Score</th>
+                  <th className="px-[14px] py-[6px] text-[11px] font-bold text-center">GWA</th>
+                  <th className="px-[14px] py-[6px] text-[11px] font-bold text-center">Total (%)</th>
+                  <th className="px-[14px] py-[6px] text-[11px] font-bold text-center">Remarks</th>
+                  <th className="px-[14px] py-[6px] text-[11px] font-bold text-center">Action</th>
 
                   {/* HEADER CHECKBOX  */}
                   {!isArchiveMode && (userRole === "Admin" || userRole === "SuperAdmin") && (
-                    <th className="px-[16px] py-[12px] pr-12 text-center w-16 relative overflow-visible">
+                    <th className="px-[14px] py-[6px] pr-12 text-center w-16 relative overflow-visible">
                       <CustomCheckbox checked={isAllSelected} onChange={handleSelectAll} disabled={eligibleApplicants.length === 0} />
                     </th>
                   )}
@@ -1459,13 +1506,20 @@ export default function Admission({ navigateToTab }) {
 
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
-                  <tr><td colSpan={getColSpan()} className="text-center py-6 text-gray-500 italic">Loading admission data...</td></tr>
+                  <tr>
+                    <td colSpan={getColSpan()} className="py-16">
+                      <div className="flex flex-col items-center justify-center space-y-3">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#376e35]"></div>
+                        <span className="text-gray-500 font-medium">Loading admission data...</span>
+                      </div>
+                    </td>
+                  </tr>
                 ) : filteredApplicants.map((a, index) => {
                   const isPending = a.bcetRemarks === "Pending" || a.interviewRemarks === "Pending";
                   const isChecked = selectedIds.includes(a.id);
 
                   return (
-                    <tr key={a.rawId || a.id} className={`h-[44px] hover:bg-[#fafdfa] transition-colors ${isChecked ? "bg-[#e4f6e2]" : ""}`}>
+                    <tr key={a.rawId || a.id} className={`h-[44px] hover:bg-gray-50 transition-colors ${isChecked ? "bg-green-50/30" : ""}`}>
 
                       {/* If they forfeit, show FORFEIT instead of their blank/missing ID */}
                       <td className="px-4 py-1 text-xs text-gray-600 font-mono">
@@ -1509,7 +1563,7 @@ export default function Admission({ navigateToTab }) {
                           >
                             <MessageSquare size={14} />
                           </button>
-                          {userRole === "SuperAdmin" && (a.admissionRemarks === 'Passed' || a.admissionStatus === 'Passed' || a.admissionStatus === 'Admitted' || a.admissionStatus === 'Confirmed') && (
+                          {(a.admissionRemarks === 'Passed' || a.admissionStatus === 'Passed' || a.admissionStatus === 'Admitted' || a.admissionStatus === 'Confirmed') && !['Confirmed', 'Forfeit'].includes(normalizeAdmissionRemark(a.admissionRemarks)) && (
                             <>
                               <button
                                 onClick={() => triggerConfirmModal(a.id, "Confirmed")}
@@ -1537,7 +1591,7 @@ export default function Admission({ navigateToTab }) {
                             <CustomCheckbox
                               checked={isChecked}
                               onChange={() => handleSelectRow(a.id)}
-                              disabled={a.admissionRemarks === 'Pending' || a.admissionStatus === 'Forfeit' || a.admissionRemarks === 'Failed' || a.admissionStatus === 'Failed'}
+                              disabled={a.admissionRemarks === 'Pending' || a.admissionStatus === 'Forfeit'}
                             />
 
                             {a.isEmailSent && (
@@ -1565,19 +1619,19 @@ export default function Admission({ navigateToTab }) {
         <div className="fixed inset-0 z-[100] flex items-center justify-center pt-6">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsConfirmModalOpen(false)}></div>
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md z-10 flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className={`flex items-center justify-between px-6 py-4 shrink-0 ${confirmActionStatus === 'Confirmed' ? 'bg-blue-600' : confirmActionStatus === 'Passed' ? 'bg-green-600' : 'bg-red-600'}`}>
-              <h3 className="font-bold text-base text-white uppercase tracking-wider">Confirm Action</h3>
-              <button className="text-white hover:text-gray-200 transition text-xl font-bold leading-none" onClick={() => setIsConfirmModalOpen(false)}>&times;</button>
+            <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-4 shrink-0">
+              <h3 className="text-gray-800 font-bold uppercase tracking-wide text-[16px]">Confirm Action</h3>
+              <button className="text-gray-400 hover:text-gray-700 transition text-2xl font-bold leading-none" onClick={() => setIsConfirmModalOpen(false)}>&times;</button>
             </div>
             <div className="p-6 text-center text-gray-700">
-              <p className="text-base mb-2">
-                Are you sure you want to mark the selected <strong>{confirmTargetId === 'bulk' ? selectedIds.length : 1}</strong> applicant(s) as <span className={`font-black uppercase tracking-wider ${confirmActionStatus === 'Confirmed' ? 'text-blue-600' : confirmActionStatus === 'Passed' ? 'text-green-600' : 'text-red-600'}`}>{confirmActionStatus}</span>?
+              <p className="text-[16px] mb-2">
+                Are you sure you want to mark the selected <strong>{confirmTargetId === 'bulk' ? selectedIds.length : 1}</strong> applicant(s) as <span className="font-black uppercase tracking-wider text-green-600">{confirmActionStatus}</span>?
               </p>
-              <p className="text-xs text-gray-500 mt-3">This action will immediately update their admission status in the system.</p>
+              <p className="text-[12px] text-gray-500 mt-3">This action will immediately update their admission status in the system.</p>
             </div>
             <div className="bg-gray-50 border-t border-gray-200 p-4 flex justify-end gap-3">
-              <button onClick={() => setIsConfirmModalOpen(false)} className="px-4 py-1.5 rounded-md bg-gray-700 hover:bg-gray-600 font-bold uppercase text-xs text-white transition">Cancel</button>
-              <button onClick={executeConfirmedAction} className={`px-6 py-1.5 rounded-md font-bold uppercase text-xs text-white transition shadow ${confirmActionStatus === 'Confirmed' ? 'bg-blue-600 hover:bg-blue-500' : confirmActionStatus === 'Passed' ? 'bg-[#376e35] hover:bg-[#5c9c5a]' : 'bg-red-600 hover:bg-red-500'}`}>Confirm</button>
+              <button onClick={() => setIsConfirmModalOpen(false)} className="px-6 py-2 rounded bg-gray-500 hover:bg-gray-600 font-bold uppercase text-[12px] text-white transition">Cancel</button>
+              <button onClick={executeConfirmedAction} className="px-8 py-2 rounded font-bold uppercase text-[12px] text-white transition shadow bg-green-600 hover:bg-green-700">Confirm</button>
             </div>
           </div>
         </div>
@@ -1588,9 +1642,9 @@ export default function Admission({ navigateToTab }) {
         <div className="fixed inset-0 z-[100] flex items-center justify-center pt-6">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsEmailModalOpen(false)}></div>
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl z-10 flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center justify-between px-6 py-4 shrink-0 bg-[#376e35]">
-              <h3 className="font-bold text-base text-white uppercase tracking-wider">Send Emails</h3>
-              <button className="text-white hover:text-gray-200 transition text-xl font-bold leading-none" onClick={() => setIsEmailModalOpen(false)}>&times;</button>
+            <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-4 shrink-0">
+              <h3 className="text-gray-800 font-bold uppercase tracking-wide text-[16px]">Send Emails</h3>
+              <button className="text-gray-400 hover:text-gray-700 transition text-2xl font-bold leading-none" onClick={() => setIsEmailModalOpen(false)}>&times;</button>
             </div>
             <div className="p-6 flex flex-col gap-4">
               <div className="flex flex-col">
@@ -1612,8 +1666,8 @@ export default function Admission({ navigateToTab }) {
               </div>
             </div>
             <div className="bg-gray-50 border-t border-gray-200 p-4 flex justify-end gap-3">
-              <button onClick={() => setIsEmailModalOpen(false)} className="px-4 py-1.5 rounded-md bg-gray-700 hover:bg-gray-600 font-bold uppercase text-xs text-white transition">Cancel</button>
-              <button onClick={handleSendEmails} className="px-6 py-1.5 rounded-md font-bold uppercase text-xs text-white transition shadow bg-[#376e35] hover:bg-[#5c9c5a]">Send</button>
+              <button onClick={() => setIsEmailModalOpen(false)} className="px-6 py-2 rounded bg-gray-500 hover:bg-gray-600 font-bold uppercase text-[12px] text-white transition">Cancel</button>
+              <button onClick={handleSendEmails} className="px-8 py-2 rounded font-bold uppercase text-[12px] text-white transition shadow bg-green-600 hover:bg-green-700">Send</button>
             </div>
           </div>
         </div>
@@ -1625,12 +1679,12 @@ export default function Admission({ navigateToTab }) {
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative bg-white rounded-2xl shadow-2xl w-11/12 max-w-[1400px] z-10 flex flex-col max-h-[95vh] overflow-hidden">
 
-            <div className="flex items-center justify-between rounded-t-2xl bg-[#376e35] text-white px-6 py-4 shrink-0">
+            <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-4 shrink-0">
               <div className="flex items-center gap-3">
-                <h3 className="font-bold text-base uppercase tracking-wider">Applicant Details</h3>
-                <span className="bg-white/20 px-3 py-1 rounded text-xs font-mono">{selectedApplicant.id}</span>
+                <h3 className="text-gray-800 font-bold uppercase tracking-wide text-[16px]">Applicant Details</h3>
+                <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded text-xs font-mono">{selectedApplicant.id}</span>
               </div>
-              <button className="text-white hover:text-red-200 transition text-3xl font-bold" onClick={() => setIsModalOpen(false)}>&times;</button>
+              <button className="text-gray-400 hover:text-gray-700 transition text-2xl font-bold leading-none" onClick={() => setIsModalOpen(false)}>&times;</button>
             </div>
 
             <div className="p-8 overflow-y-auto bg-gray-50 space-y-8 flex-1">
@@ -1796,14 +1850,14 @@ export default function Admission({ navigateToTab }) {
             <div className="bg-gray-50 border-t border-gray-300 p-4 shrink-0 flex justify-end gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
               <button
                 onClick={() => exportFormsToPDF([selectedApplicant])}
-                className="px-4 py-1.5 rounded-md bg-[#376e35] hover:bg-[#5c9c5a] font-bold uppercase text-xs text-white transition flex items-center gap-2 shadow"
+                className="px-6 py-2 rounded bg-blue-700 hover:bg-blue-600 font-bold uppercase text-[12px] text-white transition flex items-center gap-2 shadow"
               >
                 <FaPrint /> Print Form
               </button>
               <div className="flex-1"></div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="px-4 py-1.5 rounded-md bg-gray-700 hover:bg-gray-600 font-bold uppercase text-xs text-white transition"
+                className="px-6 py-2 rounded bg-gray-400 hover:bg-gray-600 font-bold uppercase text-[12px] text-white transition"
               >
                 Close
               </button>
@@ -1901,11 +1955,9 @@ export default function Admission({ navigateToTab }) {
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsInterviewModalOpen(false)}></div>
             <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-[1100px] h-[95vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
 
-              <div className="flex bg-[#376e35] ">
-                <div className="flex items-center justify-between w-full py-4 px-6">
-                  <h3 className="font-black text-xl uppercase tracking-tight text-white">Final Admission Interview Rubric (Read Only)</h3>
-                  <button onClick={() => setIsInterviewModalOpen(false)} className=" text-gray-100 hover:text-red-200 font-bold text-3xl leading-none">&times;</button>
-                </div>
+              <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-4 shrink-0">
+                <h3 className="text-gray-800 font-bold uppercase tracking-wide text-[15px]">Final Admission Interview Rubric</h3>
+                <button onClick={() => setIsInterviewModalOpen(false)} className="text-gray-400 hover:text-gray-700 transition text-2xl font-bold leading-none">&times;</button>
               </div>
 
               <div className="bg-white border-b border-gray-300 px-6 py-2 shrink-0">
@@ -2021,7 +2073,7 @@ export default function Admission({ navigateToTab }) {
                 <div className="flex gap-3">
                   <button
                     onClick={() => setIsInterviewModalOpen(false)}
-                    className="px-6 py-1.5 rounded-md bg-gray-700 hover:bg-gray-600 font-bold uppercase text-xs transition text-white"
+                    className="px-8 py-2 rounded bg-gray-700 hover:bg-gray-600 font-bold uppercase text-[12px] transition text-white"
                   >
                     Close View
                   </button>

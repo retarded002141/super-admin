@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import api from "../../services/api";
+
+
+import api from "../../../services/api";
+
 import {
   FaSearch, FaFilter, FaEye, FaTimes, FaFileDownload,
   FaSearchPlus, FaSearchMinus, FaRedo, FaCheckCircle,
   FaEdit, FaUpload, FaPlus, FaCheck, FaTrash, FaChevronDown, FaPrint
 } from "react-icons/fa";
 import { FileText, CheckCircle, MessageSquare, Eye, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { useToast } from "../context/ToastContext.jsx";
+import { ButtonSpinner, PageLoader } from "../components/Loaders.jsx";
 import {
   createApplicant, bulkUpdateStatus, encodeScore,
   getRubric, saveRubric as apiSaveRubric, updateApplicantStatus
-} from "../../services/adminService.js";
+} from "../../../services/adminService.js";
 import * as XLSX from "xlsx-js-style";
 import { regions, provinces, cities, barangays } from 'select-philippines-address';
 
@@ -88,8 +93,8 @@ const CustomCheckbox = ({ checked, onChange }) => (
 
 const FormField = ({ label, value, className = "" }) => (
   <div className={`flex flex-col ${className}`}>
-    <label className="text-[11px] font-bold text-gray-700 uppercase mb-1">{label}</label>
-    <div className="h-10 w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-xs text-gray-800 uppercase truncate cursor-default flex items-center shadow-sm">
+    <label className="text-[10px] font-bold text-gray-700 uppercase mb-1">{label}</label>
+    <div className="h-[36px] w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-[12px] text-gray-800 uppercase truncate cursor-default flex items-center shadow-sm">
       {value || "N/A"}
     </div>
   </div>
@@ -97,37 +102,32 @@ const FormField = ({ label, value, className = "" }) => (
 
 const InputFormField = ({ label, value, onChange, type = "text", className = "", placeholder = "", disabled = false, required = false }) => (
   <div className={`flex flex-col ${className}`}>
-    {label && <label className="text-[11px] font-bold text-gray-700 uppercase mb-1">{label}{required && <span className="text-red-500 ml-1 text-xs leading-none">*</span>}</label>}
+    {label && <label className="text-[10px] font-bold text-gray-700 uppercase mb-1">{label}{required && <span className="text-red-500 ml-1 text-[12px] leading-none">*</span>}</label>}
     <input
       type={type}
       value={value}
       onChange={onChange}
       placeholder={placeholder}
       disabled={disabled}
-      className={`h-10 w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-xs text-gray-800 shadow-sm focus:border-[#3a7538] outline-none transition-colors uppercase ${disabled ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+      className={`h-[36px] w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-[12px] text-gray-800 shadow-sm focus:border-[#3a7538] outline-none transition-colors uppercase ${disabled ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
     />
   </div>
 );
 
 const SelectFormField = ({ label, value, onChange, options, className = "", disabled = false, required = false }) => (
   <div className={`flex flex-col ${className}`}>
-    <label className="text-[11px] font-bold text-gray-700 uppercase mb-1">{label}{required && <span className="text-red-500 ml-1 text-xs leading-none">*</span>}</label>
+    <label className="text-[10px] font-bold text-gray-700 uppercase mb-1">{label}{required && <span className="text-red-500 ml-1 text-[12px] leading-none">*</span>}</label>
     <div className="relative">
       <select
         value={value || ""}
         onChange={onChange}
         disabled={disabled}
-        className={`h-10 w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-xs shadow-sm focus:border-[#3a7538] outline-none transition-colors uppercase appearance-none ${disabled ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : (value ? 'text-gray-800' : 'text-gray-400')}`}
+        className={`h-[36px] w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-[12px] shadow-sm focus:border-[#3a7538] outline-none transition-colors uppercase appearance-none ${disabled ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : (value ? 'text-gray-800' : 'text-gray-400')}`}
       >
         <option value="" disabled hidden>SELECT COURSE</option>
-        {(options || []).map((option, index) => {
-          const optName = typeof option === 'string' ? option : (option?.name || "UNKNOWN COURSE");
-          return (
-            <option key={index} value={optName.toUpperCase()} className="text-gray-800">
-              {optName.toUpperCase()}
-            </option>
-          );
-        })}
+        {options.map((option, index) => (
+          <option key={index} value={option.name.toUpperCase()} className="text-gray-800">{option.name.toUpperCase()}</option>
+        ))}
       </select>
       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
         <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
@@ -173,7 +173,7 @@ const CustomDatePicker = ({ value, onChange, disabled, required = false }) => {
     <div className="relative" ref={dateRef}>
       <div
         onClick={() => !disabled && setIsOpen(!isOpen)}
-        className={`h-10 w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-xs shadow-sm flex items-center justify-between outline-none transition-colors ${disabled ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'cursor-pointer hover:border-[#3a7538]'}`}
+        className={`h-[36px] w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-[12px] shadow-sm flex items-center justify-between outline-none transition-colors ${disabled ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'cursor-pointer hover:border-[#3a7538]'}`}
       >
         <span className="text-gray-800 uppercase">{value || "YYYY-MM-DD"}</span>
         <CalendarIcon className="text-gray-500 w-4 h-4" />
@@ -181,9 +181,9 @@ const CustomDatePicker = ({ value, onChange, disabled, required = false }) => {
       {isOpen && (
         <div className="absolute z-50 mt-1 w-64 bg-white rounded-lg shadow-xl border border-gray-200 p-3">
           <div className="flex justify-between items-center mb-2">
-            <button type="button" onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronLeft size={16} /></button>
-            <div className="font-bold text-xs uppercase text-gray-800">{monthNames[viewDate.getMonth()]} {viewDate.getFullYear()}</div>
-            <button type="button" onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronRight size={16} /></button>
+            <button type="button" onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronLeft size={14} /></button>
+            <div className="font-bold text-[12px] uppercase text-gray-800">{monthNames[viewDate.getMonth()]} {viewDate.getFullYear()}</div>
+            <button type="button" onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronRight size={14} /></button>
           </div>
           <div className="grid grid-cols-7 gap-1 mb-1">
             {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => <div key={day} className="text-[10px] font-bold text-center text-gray-500">{day}</div>)}
@@ -217,7 +217,6 @@ const AddressDropdowns = ({ label, addressData, onChange, disabled, required = f
   const [barangayList, setBarangayList] = useState([]);
 
   useEffect(() => {
-    // Fetch all provinces by first fetching all regions
     regions().then(async (regionList) => {
       const allProvPromises = regionList.map(r => provinces(r.region_code));
       const provsArray = await Promise.all(allProvPromises);
@@ -250,7 +249,7 @@ const AddressDropdowns = ({ label, addressData, onChange, disabled, required = f
 
   return (
     <div className="md:col-span-2 lg:col-span-4 mt-2">
-      <label className="text-[11px] font-bold text-gray-700 uppercase mb-1 border-b pb-1 block">{label}{required && <span className="text-red-500 ml-1 text-xs leading-none">*</span>}</label>
+      <label className="text-[10px] font-bold text-gray-700 uppercase mb-1 border-b pb-1 block">{label}{required && <span className="text-red-500 ml-1 text-[12px] leading-none">*</span>}</label>
       <div className="grid grid-cols-1 md:grid-cols-5 gap-2 mt-2">
         <InputFormField placeholder="House/Street" value={addressData.houseStreet} onChange={e => onChange('houseStreet', e.target.value)} disabled={disabled} />
 
@@ -260,7 +259,7 @@ const AddressDropdowns = ({ label, addressData, onChange, disabled, required = f
             handleChange('province', 'provinceCode', e.target.value, name);
             handleChange('city', 'cityCode', "", "");
             handleChange('barangay', 'barangayCode', "", "");
-          }} className="h-10 w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-xs text-gray-800 shadow-sm focus:border-[#3a7538] outline-none uppercase appearance-none">
+          }} className="h-[36px] w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-[12px] text-gray-800 shadow-sm focus:border-[#3a7538] outline-none uppercase appearance-none">
             <option value="">PROVINCE</option>
             {provinceList.map(p => <option key={p.province_code} value={p.province_code}>{p.province_name}</option>)}
           </select>
@@ -271,7 +270,7 @@ const AddressDropdowns = ({ label, addressData, onChange, disabled, required = f
             const name = e.target.options[e.target.selectedIndex].text;
             handleChange('city', 'cityCode', e.target.value, name);
             handleChange('barangay', 'barangayCode', "", "");
-          }} className="h-10 w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-xs text-gray-800 shadow-sm focus:border-[#3a7538] outline-none uppercase appearance-none">
+          }} className="h-[36px] w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-[12px] text-gray-800 shadow-sm focus:border-[#3a7538] outline-none uppercase appearance-none">
             <option value="">CITY/MUNI</option>
             {cityList.map(c => <option key={c.city_code} value={c.city_code}>{c.city_name}</option>)}
           </select>
@@ -281,7 +280,7 @@ const AddressDropdowns = ({ label, addressData, onChange, disabled, required = f
           <select disabled={disabled || !addressData.cityCode} value={addressData.barangayCode || ""} onChange={(e) => {
             const name = e.target.options[e.target.selectedIndex].text;
             handleChange('barangay', 'barangayCode', e.target.value, name);
-          }} className="h-10 w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-xs text-gray-800 shadow-sm focus:border-[#3a7538] outline-none uppercase appearance-none">
+          }} className="h-[36px] w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-[12px] text-gray-800 shadow-sm focus:border-[#3a7538] outline-none uppercase appearance-none">
             <option value="">BARANGAY</option>
             {barangayList.map(b => <option key={b.brgy_code} value={b.brgy_code}>{b.brgy_name}</option>)}
           </select>
@@ -295,12 +294,12 @@ const AddressDropdowns = ({ label, addressData, onChange, disabled, required = f
 
 const SectionHeader = ({ title }) => (
   <div className="mb-4 pb-2 border-b border-gray-200">
-    <h3 className="text-xs font-black text-[#376e35] uppercase tracking-wide">{title}</h3>
+    <h3 className="text-[12px] font-black text-[#376e35] uppercase tracking-wide">{title}</h3>
   </div>
 );
 
 const token = localStorage.getItem('token');
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = "http://localhost:5000";
 
 const getImageUrl = (path) => {
   if (!path) return null;
@@ -314,18 +313,22 @@ const getImageUrl = (path) => {
 
 /* --- MAIN COMPONENT --- */
 export default function Applications({ navigateToTab, navigationState }) {
+  const { toast } = useToast();
+  const isSidebarOpen = false;
+
+
 
   /* --- DYNAMIC STATES --- */
   const [coursesList, setCoursesList] = useState([]);
   const [institutesList, setInstitutesList] = useState([]);
 
   /* --- ROLE STATE --- */
-  const [userRole, setUserRole] = useState("SuperAdmin");
+  const [userRole, setUserRole] = useState("Admin");
   const [userInstitute, setUserInstitute] = useState("IITI");
   const [currentAdminUsername, setCurrentAdminUsername] = useState("");
 
   /* --- STATE --- */
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isInterviewModalOpen, setIsInterviewModalOpen] = useState(false);
@@ -460,25 +463,10 @@ export default function Applications({ navigateToTab, navigationState }) {
           api.get('/public/settings')
         ]);
 
+        setUserRole(profileRes.data.role || "Admin");
         setUserInstitute(profileRes.data.institute || "IITI");
         setCurrentAdminUsername(profileRes.data.username || profileRes.data.name || "");
-        
-        // --- BULLETPROOF COURSE FALLBACK ---
-        let fetchedCourses = [];
-        if (Array.isArray(coursesRes.data) && coursesRes.data.length > 0) {
-          fetchedCourses = coursesRes.data;
-        } else if (settingsRes.data && Array.isArray(settingsRes.data.courses) && settingsRes.data.courses.length > 0) {
-          fetchedCourses = settingsRes.data.courses;
-        } else {
-          // Fallback data if database returns completely empty
-          fetchedCourses = [
-            { name: "Bachelor of Science in Information Technology" },
-            { name: "Bachelor of Science in Hospitality Management" },
-            { name: "Bachelor of Science in Business Administration" },
-            { name: "Bachelor of Elementary Education" }
-          ];
-        }
-        setCoursesList(fetchedCourses);
+        setCoursesList(coursesRes.data || []);
         setInstitutesList(institutesRes.data || []);
 
         const archiveYear = sessionStorage.getItem("archiveViewYear");
@@ -491,8 +479,7 @@ export default function Applications({ navigateToTab, navigationState }) {
 
         const applicantsRes = await api.get('/admin/applicants', { params: { schoolYear: currentYearToFetch } });
 
-        const applicantsData = Array.isArray(applicantsRes.data) ? applicantsRes.data : [];
-        const mappedData = applicantsData.map(app => {
+        const mappedData = applicantsRes.data.map(app => {
           const safe = getSafeApplicant(app);
 
           const dbStatus = (app.interviewStatus && app.interviewStatus !== 'Pending')
@@ -551,10 +538,10 @@ export default function Applications({ navigateToTab, navigationState }) {
         // Ensure applicants are loaded before trying to open the modal
         const attemptOpen = setInterval(() => {
           setApplicants((prev) => {
-            const app = prev.find(a => a.rawId === navigationState.applicantId);
+            const app = prev.find(a => a.rawId === navigationState.applicantId || a.id === navigationState.applicantId);
             if (app) {
               setSelectedApplicant(app);
-              setIsViewModalOpen(true);
+              setIsModalOpen(true);
               if (navigationState.openInterview && (app.status === 'For Interview' || app.status === 'Admitted' || app.status === 'Rejected' || app.status === 'Pending Admission' || app.status === 'Waitlisted')) {
                 setIsInterviewModalOpen(true);
               }
@@ -708,7 +695,7 @@ export default function Applications({ navigateToTab, navigationState }) {
       setActivePopover(null);
     } catch (err) {
       console.error("Bulk update failed:", err);
-      alert("Failed to update applicant statuses.");
+      toast.error("Failed to update applicant statuses.");
     }
   };
 
@@ -871,7 +858,7 @@ export default function Applications({ navigateToTab, navigationState }) {
       const o = app.profile.otherInfo;
       const a = app.profile.appDetails;
 
-      const chk = (condition) => condition ? '☑' : '☐';
+      const chk = (condition) => condition ? '<span style="display:inline-block; width:12px; height:12px; border:1px solid #000; text-align:center; line-height:10px; font-size:10px; font-weight:bold;">X</span>' : '<span style="display:inline-block; width:12px; height:12px; border:1px solid #000;"></span>';
 
       const civilStatus = String(p.civilStatus || '').toUpperCase();
       const gender = String(p.sex || '').toUpperCase();
@@ -1068,26 +1055,26 @@ export default function Applications({ navigateToTab, navigationState }) {
                     <div style="display: flex; justify-content: space-between;">
                         <div style="width: 32%;">
                             <div style="text-align: center; font-weight: bold; margin-bottom: 5px;">Freshmen</div>
-                            <div>☐ Original Grade 12 Report Card/F138</div>
-                            <div>☐ Original Certificate of Good Moral</div>
-                            <div>☐ Photocopy of Diploma</div>
-                            <div>☐ Photocopy of PSA Birth Certificate</div>
-                            <div>☐ 3 pcs. 2x2 Picture</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> Original Grade 12 Report Card/F138</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> Original Certificate of Good Moral</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> Photocopy of Diploma</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> Photocopy of PSA Birth Certificate</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> 3 pcs. 2x2 Picture</div>
                         </div>
                         <div style="width: 32%;">
                             <div style="text-align: center; font-weight: bold; margin-bottom: 5px;">Transferees</div>
-                            <div>☐ Original Honorable Dismissal</div>
-                            <div>☐ Certificate of Copy of Grades</div>
-                            <div>☐ Original Transcript of Records</div>
-                            <div>☐ Photocopy of PSA Birth Certificate</div>
-                            <div>☐ 3 pcs. 2x2 Picture</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> Original Honorable Dismissal</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> Certificate of Copy of Grades</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> Original Transcript of Records</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> Photocopy of PSA Birth Certificate</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> 3 pcs. 2x2 Picture</div>
                         </div>
                         <div style="width: 32%;">
                             <div style="text-align: center; font-weight: bold; margin-bottom: 5px;">ALS</div>
-                            <div>☐ Original Certificate of Rating</div>
-                            <div>☐ Original ALS Certification</div>
-                            <div>☐ Photocopy of PSA Birth Certificate</div>
-                            <div>☐ 3pcs. 2x2 Picture</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> Original Certificate of Rating</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> Original ALS Certification</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> Photocopy of PSA Birth Certificate</div>
+                            <div><span style="display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:4px; margin-bottom:-1px;"></span> 3pcs. 2x2 Picture</div>
                         </div>
                     </div>
                 </div>
@@ -1184,7 +1171,6 @@ export default function Applications({ navigateToTab, navigationState }) {
       let current = updated;
       const keys = path.split('.');
 
-      // Auto-format names to Title Case
       let processedValue = value;
       if (['firstName', 'middleName', 'surname', 'spouseName'].some(k => path.includes(k))) {
         processedValue = toTitleCase(value);
@@ -1220,24 +1206,24 @@ export default function Applications({ navigateToTab, navigationState }) {
       !e.elem.name || !e.elem.address || !e.elem.year ||
       !e.jhs.name || !e.jhs.address || !e.jhs.year ||
       !e.shs.name || !e.shs.address || !e.shs.year || !e.shs.gwa) {
-      alert("Please fill out all required fields (marked with *).");
+      toast.warning("Please fill out all required fields (marked with *).");
       return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email)) {
-      alert("Please enter a valid email address containing '@' (e.g., email@gmail.com).");
+      toast.warning("Please enter a valid email address containing '@' (e.g., email@gmail.com).");
       return;
     }
     if (!/^09\d{9}$/.test(p.contact)) {
-      alert("Applicant Contact Number must start with '09' and be exactly 11 digits.");
+      toast.warning("Applicant Contact Number must start with '09' and be exactly 11 digits.");
       return;
     }
     if (f.father.contact && !/^09\d{9}$/.test(f.father.contact)) {
-      alert("Father's Contact Number must start with '09' and be exactly 11 digits.");
+      toast.warning("Father's Contact Number must start with '09' and be exactly 11 digits.");
       return;
     }
     if (f.mother.contact && !/^09\d{9}$/.test(f.mother.contact)) {
-      alert("Mother's Contact Number must start with '09' and be exactly 11 digits.");
+      toast.warning("Mother's Contact Number must start with '09' and be exactly 11 digits.");
       return;
     }
 
@@ -1303,7 +1289,7 @@ export default function Applications({ navigateToTab, navigationState }) {
 
       await createApplicant(payload);
 
-      alert("Applicant successfully generated! Refreshing database...");
+      toast.success("Applicant successfully generated! Refreshing database...");
 
       window.location.reload();
 
@@ -1410,10 +1396,10 @@ export default function Applications({ navigateToTab, navigationState }) {
       await apiSaveRubric(tempRubricData);
       setRubricData(tempRubricData);
       setIsRubricEditModalOpen(false);
-      alert("Rubric saved successfully!");
+      toast.success("Rubric saved successfully!");
     } catch (err) {
       console.error("Failed to save rubric:", err);
-      alert("Failed to save rubric.");
+      toast.error("Failed to save rubric.");
     }
   };
 
@@ -1519,7 +1505,7 @@ export default function Applications({ navigateToTab, navigationState }) {
     const interviewerName = selectedApplicant.interviewer?.trim();
 
     if (!interviewerName) {
-      alert("Please enter the interviewer name before submitting.");
+      toast.warning("Please enter the interviewer name before submitting.");
       return;
     }
 
@@ -1558,10 +1544,10 @@ export default function Applications({ navigateToTab, navigationState }) {
       });
 
       setIsInterviewModalOpen(false);
-      alert("Evaluation successfully saved!");
+      toast.success("Evaluation successfully saved!");
     } catch (err) {
       console.error("Failed to save interview:", err);
-      alert("Failed to save interview results.");
+      toast.error("Failed to save interview results.");
     }
   };
 
@@ -1583,97 +1569,106 @@ export default function Applications({ navigateToTab, navigationState }) {
   };
 
   /* --- RENDER --- */
-  return (
-    <div className="h-[calc(100vh-90px)] w-full bg-gray-50 font-sans overflow-hidden flex flex-col transition-all duration-300 ease-in-out ml-2">
+  if (isLoading && applicants.length === 0) {
+    return <PageLoader message="Loading applications..." />;
+  }
 
-      <main className="flex-1 flex flex-col p-[10px] w-full h-full relative">
+  return (
+    <div className={`h-screen w-full bg-gray-50 font-sans overflow-hidden flex flex-col transition-all duration-300 ease-in-out ${isSidebarOpen ? 'ml-2' : 'ml-2'
+      }`}>
+
+      <main className="flex-1 flex flex-col px-6 py-4 w-full h-full relative">
 
         {/* --- MAIN HEADER & FILTERS --- */}
-        <div className="flex-none flex flex-col">
+        <div className="shrink-0">
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-full">
 
-          {isArchiveMode ? (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-1.5 rounded-md mb-4 flex justify-between items-center shadow-sm">
-              <span className="font-bold">⚠️ YOU ARE IN ARCHIVE MODE. Viewing read-only data for AY {activeYear}.</span>
-              <button onClick={exitArchiveMode} className="bg-red-700 text-white px-3 py-1 rounded text-xs uppercase font-black hover:bg-red-800 transition">Return to Live</button>
+              {isArchiveMode && (
+                <div className="mt-4 mb-2 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex justify-between items-center">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <span className="text-amber-500">⚠</span>
+                    Archive mode — viewing read-only data for A.Y. {activeYear}
+                  </div>
+                  <button onClick={exitArchiveMode} className="text-xs font-semibold bg-amber-600 text-white px-3 py-1.5 rounded-md hover:bg-amber-700 transition">
+                    Return to Live
+                  </button>
+                </div>
+              )}
             </div>
-          ) : (
-            <p className="text-gray-600 mb-4">
-            </p>
-          )}
+          </div>
 
-          <div className="flex gap-3 mb-4 items-center justify-between">
-            <div className="flex gap-3 items-center">
+          <div className="flex flex-col md:flex-row gap-3 mb-4 items-start md:items-center">
+            {/* SEARCH */}
+            <div className="relative w-full md:w-auto">
+              <FaSearch className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-800" />
+              <input
+                type="text"
+                placeholder="Search applicant..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="px-4 py-2 text-[14px] rounded-lg bg-white border border-gray-100 w-[300px] outline-none shadow-sm"
+              />
+            </div>
 
-              <div className="relative">
-                <FaSearch className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600" />
-                <input
-                  type="text"
-                  placeholder="Search applicant..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="px-4 py-2 text-[14px] rounded-lg bg-white border border-gray-100 w-[300px] outline-none shadow-sm"
-                />
-              </div>
-
-              <div
-                className="relative"
-                ref={filterRef}
-                onMouseLeave={() => setShowFilter(false)}
+            {/* FILTER */}
+            <div className="relative w-full md:w-auto" ref={filterRef} onMouseLeave={() => setShowFilter(false)}>
+              <button
+                onClick={() => setShowFilter((v) => !v)}
+                className="bg-white px-[14px] py-[6px] rounded-lg shadow flex items-center gap-2 font-semibold"
               >
-                <button onClick={() => setShowFilter((v) => !v)} className="bg-white px-3 py-1.5 rounded-md shadow flex items-center gap-2 font-semibold">
-                  <FaFilter /> Filter
-                </button>
-                {showFilter && (
-                  <div className="absolute left-0 top-full pt-2 z-30">
-                    <div className="bg-white border rounded shadow-xl p-4 w-60 max-h-[70vh] overflow-y-auto">
+                <FaFilter /> Filter
+              </button>
+              {showFilter && (
+                <div className="absolute left-0 top-full pt-2 z-30">
+                  <div className="bg-white border rounded shadow-xl p-4 w-60 max-h-[70vh] overflow-y-auto">
 
-                      <label className="block text-xs font-bold mb-1 uppercase tracking-tight">Interview Schedule</label>
-                      <select value={scheduleFilter} onChange={(e) => setScheduleFilter(e.target.value)} className="w-full mb-3 p-2 border rounded text-xs outline-none">
-                        <option value="">All Schedules</option>
-                        <option value="today">Today</option>
-                        <option value="tomorrow">Tomorrow</option>
-                      </select>
+                    <label className="block text-[12px] font-bold mb-1 uppercase tracking-tight">Interview Schedule</label>
+                    <select value={scheduleFilter} onChange={(e) => setScheduleFilter(e.target.value)} className="w-full mb-3 p-2 border rounded text-[12px] outline-none">
+                      <option value="">All Schedules</option>
+                      <option value="today">Today</option>
+                      <option value="tomorrow">Tomorrow</option>
+                    </select>
 
-                      <label className="block text-xs font-bold mb-1 uppercase tracking-tight">Status</label>
-                      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full mb-3 p-2 border rounded text-xs outline-none">
-                        <option value="">All Statuses</option>
-                        <option value="For Interview">For Interview</option>
-                        <option value="Passed">Passed</option>
-                        <option value="Failed">Failed</option>
-                      </select>
+                    <label className="block text-[12px] font-bold mb-1 uppercase tracking-tight">Status</label>
+                    <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full mb-3 p-2 border rounded text-[12px] outline-none">
+                      <option value="">All Statuses</option>
+                      <option value="For Interview">For Interview</option>
+                      <option value="Passed">Passed</option>
+                      <option value="Failed">Failed</option>
+                    </select>
 
-                      <label className="block text-xs font-bold mb-1 uppercase tracking-tight">Applicant Type</label>
-                      <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="w-full mb-3 p-2 border rounded text-xs outline-none">
-                        <option value="">All Types</option>
-                        <option value="SHS Graduate">SHS Graduate</option>
-                        <option value="TRANSFEREE">Transferee</option>
-                        <option value="ALS Graduate">ALS</option>
-                      </select>
+                    <label className="block text-[12px] font-bold mb-1 uppercase tracking-tight">Applicant Type</label>
+                    <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="w-full mb-3 p-2 border rounded text-[12px] outline-none">
+                      <option value="">All Types</option>
+                      <option value="SHS Graduate">SHS Graduate</option>
+                      <option value="TRANSFEREE">Transferee</option>
+                      <option value="ALS Graduate">ALS</option>
+                    </select>
 
-                      <label className="block text-xs font-bold mb-1 uppercase tracking-tight">Location</label>
-                      <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className="w-full mb-3 p-2 border rounded text-xs outline-none">
-                        <option value="">All Locations</option>
-                        {uniqueLocations.map(loc => (
-                          <option key={loc} value={loc}>{loc}</option>
-                        ))}
-                      </select>
+                    <label className="block text-[12px] font-bold mb-1 uppercase tracking-tight">Location</label>
+                    <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className="w-full mb-3 p-2 border rounded text-[12px] outline-none">
+                      <option value="">All Locations</option>
+                      {uniqueLocations.map(loc => (
+                        <option key={loc} value={loc}>{loc}</option>
+                      ))}
+                    </select>
 
-                      <div className="flex justify-between">
-                        <button onClick={() => setShowFilter(false)} className="px-3 py-1 bg-[#376e35] text-white rounded text-xs font-bold">Apply</button>
-                        <button onClick={() => {
-                          setTypeFilter(""); setLocationFilter(""); setStatusFilter("");
-                          setScheduleFilter(""); setSortOrder("newest"); setSearchQuery("");
-                        }} className="px-3 py-1 bg-gray-100 rounded text-xs font-bold">Clear</button>
-                      </div>
+                    <div className="flex justify-between">
+                      <button onClick={() => setShowFilter(false)} className="px-3 py-1 bg-[#376e35] text-white rounded text-xs font-bold">Apply</button>
+                      <button onClick={() => {
+                        setTypeFilter(""); setLocationFilter(""); setStatusFilter("");
+                        setScheduleFilter(""); setSortOrder("newest"); setSearchQuery("");
+                      }} className="px-3 py-1 bg-gray-100 rounded text-xs font-bold">Clear</button>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* ACTION BUTTONS */}
             <div className="md:ml-auto flex flex-wrap gap-3 z-[45]">
-              {userRole === "SuperAdmin" && (
+              {(userRole === "SuperAdmin" || userRole === "Admin") && (
                 <div className="relative" ref={exportMenuRef}>
                   <button
                     onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
@@ -1683,13 +1678,13 @@ export default function Applications({ navigateToTab, navigationState }) {
                   </button>
                   {isExportMenuOpen && (
                     <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-50 overflow-hidden">
-                      <button onClick={exportToExcel} className="w-full text-left px-4 py-3 text-xs font-bold text-gray-700 hover:bg-gray-100 border-b border-gray-100">
+                      <button onClick={exportToExcel} className="w-full text-left px-4 py-3 text-[12px] font-bold text-gray-700 hover:bg-gray-100 border-b border-gray-100">
                         Export to Excel (.xlsx)
                       </button>
-                      <button onClick={exportTableToPDF} className="w-full text-left px-4 py-3 text-xs font-bold text-gray-700 hover:bg-gray-100 border-b border-gray-100">
+                      <button onClick={exportTableToPDF} className="w-full text-left px-4 py-3 text-[12px] font-bold text-gray-700 hover:bg-gray-100 border-b border-gray-100">
                         Export PDF (Table)
                       </button>
-                      <button onClick={() => exportFormsToPDF()} className="w-full text-left px-4 py-3 text-xs font-bold text-gray-700 hover:bg-[#fafdfa]">
+                      <button onClick={() => exportFormsToPDF()} className="w-full text-left px-4 py-3 text-[12px] font-bold text-gray-700 hover:bg-gray-50">
                         Export PDF (All Forms)
                       </button>
                     </div>
@@ -1701,12 +1696,12 @@ export default function Applications({ navigateToTab, navigationState }) {
                 <button
                   onClick={isArchiveMode ? undefined : openRubricEditor}
                   disabled={isArchiveMode}
-                  className={`px-3 py-2 rounded-lg shadow-sm flex items-center gap-2 font-[600] transition ${isArchiveMode
+                  className={`px-[14px] py-[6px] rounded-lg shadow-sm flex items-center gap-2 font-black transition ${isArchiveMode
                     ? 'bg-gray-400 text-white opacity-60 cursor-not-allowed'
                     : 'bg-blue-700 text-white hover:bg-blue-500'
                     }`}
                 >
-                  <FaEdit size={16} /> Edit Rubric
+                  <FaEdit size={14} /> Edit Rubric
                 </button>
               )}
 
@@ -1714,7 +1709,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                 <button
                   onClick={isArchiveMode ? undefined : openAddModal}
                   disabled={isArchiveMode}
-                  className={`px-3 py-2 rounded-lg shadow-sm flex items-center gap-2 font-[600] transition ${isArchiveMode
+                  className={`px-[14px] py-[6px] rounded-lg shadow-sm flex items-center gap-2 font-black transition ${isArchiveMode
                     ? 'bg-gray-400 text-white opacity-60 cursor-not-allowed'
                     : 'bg-[#376e35] text-white hover:bg-[#5c9c5a]'
                     }`}
@@ -1730,22 +1725,22 @@ export default function Applications({ navigateToTab, navigationState }) {
         <div className="flex-1 relative bg-white rounded-sm shadow overflow-hidden mt-2">
           <div className="absolute inset-0 overflow-y-auto">
             <table className="w-full border-collapse">
-              <thead className="bg-[#E4F6E2] text-[#2e522a] sticky top-0 z-20">
-                <tr className="text-[13.5px] border-b border-[#cbd5e1]">
-                  <th className="px-4 py-3 text-left text-[14px] font-bold">ID</th>
-                  <th className="px-4 py-3 text-left text-[14px] font-bold whitespace-nowrap">
-                    <div className="relative inline-block pr-1 mt-1">
+              <thead className="bg-[#E4F6E2] text-[#2e522a] border-b border-gray-200 sticky top-0 z-20">
+                <tr className="text-xs uppercase tracking-wide h-11">
+                  <th className="px-4 py-3 text-left text-[11px] font-bold">ID</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-bold whitespace-nowrap">
+                    <div className="relative inline-block pr-1">
                       Applicant Name
-                      <span className="absolute -top-2 -right-5 bg-yellow-400 text-yellow-900 rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center text-[10px] font-black shadow-sm leading-none" title="Total Applicants">
+                      <span className="ml-1.5 bg-white text-[#2e522a] rounded-full h-5 min-w-[20px] px-1.5 inline-flex items-center justify-center text-[10px] font-bold leading-none border border-gray-200" title="Total Applicants">
                         {filteredApplicants.length}
                       </span>
                     </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-[14px] font-bold">Type</th>
-                  <th className="px-4 py-3 text-left text-[14px] font-bold">Location</th>
-                  <th className="px-4 py-3 text-center text-[14px] font-bold">Date Applied</th>
-                  <th className="px-4 py-3 text-center text-[14px] font-bold">Status</th>
-                  <th className="px-4 py-3 text-center text-[14px] font-bold">Action</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-bold">Type</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-bold">Location</th>
+                  <th className="px-4 py-3 text-center text-[11px] font-bold">Date Applied</th>
+                  <th className="px-4 py-3 text-center text-[11px] font-bold">Status</th>
+                  <th className="px-4 py-3 text-center text-[11px] font-bold">Action</th>
                   {!isArchiveMode && userRole === "Admin" && (
                     <th className="px-4 py-3 pr-6 text-center w-16 relative overflow-visible">
                       <CustomCheckbox
@@ -1753,7 +1748,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                         onChange={handleSelectAll}
                       />
                       {activePopover === 'all' && selectedApplicantIds.length > 0 && (
-                        <div className="absolute right-[3.5rem] top-1/2 -translate-y-1/2 mr-1 bg-white border border-[#3a7538] rounded shadow-xl z-[60] flex text-black text-[11px] font-black tracking-wide whitespace-nowrap overflow-hidden">
+                        <div className="absolute right-[3.5rem] top-1/2 -translate-y-1/2 mr-1 bg-white border border-[#3a7538] rounded shadow-xl z-[60] flex text-black text-[10px] font-black tracking-wide whitespace-nowrap overflow-hidden">
                           <button onClick={() => triggerConfirmModal('Passed')} className="px-3 py-1.5 hover:bg-gray-100 border-r border-gray-200 transition-colors">PASS ALL</button>
                           <button onClick={() => triggerConfirmModal('Failed')} className="px-3 py-1.5 hover:bg-gray-100 transition-colors">FAIL ALL</button>
                         </div>
@@ -1765,18 +1760,25 @@ export default function Applications({ navigateToTab, navigationState }) {
 
               <tbody className="divide-y divide-gray-100">
                 {isLoading ? (
-                  <tr><td colSpan={getColSpan()} className="text-center py-8 text-gray-500">Loading applicants...</td></tr>
+                  <tr>
+                    <td colSpan={getColSpan()} className="py-16">
+                      <div className="flex flex-col items-center justify-center space-y-3">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#376e35]"></div>
+                        <span className="text-gray-500 font-medium">Loading applicants...</span>
+                      </div>
+                    </td>
+                  </tr>
                 ) : filteredApplicants.map((a, index) => {
                   const isNearBottom = index >= filteredApplicants.length - 2 && filteredApplicants.length > 2;
 
                   return (
-                    <tr key={a._id || a.id} className={`hover:bg-[#fafdfa] transition-colors ${selectedApplicantIds.includes(a._id || a.id) ? 'bg-[#e4f6e2]' : ''}`}>
-                      <td className="px-4 py-2 text-xs text-gray-600 text-left">{a.id}</td>
-                      <td className="px-4 py-2 text-xs text-gray-800 text-left">{a.name}</td>
-                      <td className="px-4 py-2 text-xs uppercase text-gray-600 text-left">{a.type}</td>
-                      <td className="px-4 py-2 text-xs uppercase text-gray-600 text-left">{a.location}</td>
-                      <td className="px-4 py-2 text-xs text-gray-600 text-center">{a.date}</td>
-                      <td className="px-4 py-2 text-center">
+                    <tr key={a._id || a.id} className={`hover:bg-gray-50 transition-colors ${selectedApplicantIds.includes(a._id || a.id) ? 'bg-green-50/30' : ''}`}>
+                      <td className="px-[14px] py-[6px] text-[12px] text-gray-600 text-left">{a.id}</td>
+                      <td className="px-[14px] py-[6px] text-[12px] text-gray-800 text-left">{a.name}</td>
+                      <td className="px-[14px] py-[6px] text-[12px] uppercase text-gray-600 text-left">{a.type}</td>
+                      <td className="px-[14px] py-[6px] text-[12px] uppercase text-gray-600 text-left">{a.location}</td>
+                      <td className="px-[14px] py-[6px] text-[12px] text-gray-600 text-center">{a.date}</td>
+                      <td className="px-[14px] py-[6px] text-center">
                         <span className={`px-2 py-1.5 rounded-md text-[9px] font-extrabold uppercase tracking-wide border 
                         ${a.status === 'Passed' ? 'bg-green-100 text-[#376e35] border-green-200' :
                             a.status === 'Failed' ? 'bg-red-100 text-red-700 border-red-200' :
@@ -1785,34 +1787,34 @@ export default function Applications({ navigateToTab, navigationState }) {
                           {a.status}
                         </span>
                       </td>
-                      <td className="px-4 py-2 text-center">
+                      <td className="px-[14px] py-[6px] text-center">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => { setSelectedApplicant(getSafeApplicant(a)); setIsModalOpen(true); }}
                             className="group relative flex items-center justify-center w-7 h-7 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded-lg transition-all shadow-sm"
                             title="Applicant Details"
                           >
-                            <Eye size={16} />
+                            <Eye size={14} />
                           </button>
                           <button
                             onClick={() => openInterviewModal(a)}
                             className="group relative flex items-center justify-center w-7 h-7 bg-yellow-50 hover:bg-yellow-100 text-orange-500 border border-yellow-200 rounded-lg transition-all shadow-sm"
                             title="Interview"
                           >
-                            <MessageSquare size={16} />
+                            <MessageSquare size={14} />
                           </button>
                         </div>
                       </td>
 
                       {!isArchiveMode && userRole === "Admin" && (
-                        <td className="px-4 py-2 pr-6 text-center relative overflow-visible">
+                        <td className="px-[14px] py-[6px] pr-6 text-center relative overflow-visible">
                           <CustomCheckbox
                             checked={selectedApplicantIds.includes(a._id || a.id)}
                             onChange={() => handleSelectApplicant(a._id || a.id)}
                           />
 
                           {activePopover === (a._id || a.id) && selectedApplicantIds.includes(a._id || a.id) && (
-                            <div className={`absolute right-[3.5rem] z-[60] mr-1 bg-white border border-[#3a7538] rounded shadow-xl flex text-black text-[11px] font-black tracking-wide whitespace-nowrap overflow-hidden ${isNearBottom ? 'bottom-2' : 'top-2'}`}>
+                            <div className={`absolute right-[3.5rem] z-[60] mr-1 bg-white border border-[#3a7538] rounded shadow-xl flex text-black text-[10px] font-black tracking-wide whitespace-nowrap overflow-hidden ${isNearBottom ? 'bottom-2' : 'top-2'}`}>
                               <button onClick={() => triggerConfirmModal('Passed')} className="px-3 py-1.5 hover:bg-gray-100 border-r border-gray-200 transition-colors">PASS</button>
                               <button onClick={() => triggerConfirmModal('Failed')} className="px-3 py-1.5 hover:bg-gray-100 transition-colors">FAIL</button>
                             </div>
@@ -1833,15 +1835,15 @@ export default function Applications({ navigateToTab, navigationState }) {
 
       {/* --- ADD APPLICANT MODAL --- */}
       {isAddModalOpen && newApplicant && !isArchiveMode && (
-        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-6">
+        <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-6">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)}></div>
           <div className="relative bg-white rounded-[10px] shadow-2xl w-11/12 max-w-[1400px] z-10 flex flex-col max-h-[95vh] overflow-hidden animate-in fade-in zoom-in duration-200">
 
-            <div className="flex items-center justify-between rounded-t-[10px] bg-[#376e35] text-white px-6 py-2.5 shrink-0">
+            <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-4 shrink-0">
               <div className="flex items-center gap-3">
-                <h3 className="font-bold text-[15px] uppercase tracking-wider">Add New Applicant</h3>
+                <h3 className="text-gray-800 font-bold uppercase tracking-wide text-[15px]">Add New Applicant</h3>
               </div>
-              <button className="text-white hover:text-red-200 transition text-3xl font-bold" onClick={() => setIsAddModalOpen(false)}>&times;</button>
+              <button className="text-gray-400 hover:text-gray-700 transition text-2xl font-bold leading-none" onClick={() => setIsAddModalOpen(false)}>&times;</button>
             </div>
 
             <div className="p-8 overflow-y-auto bg-gray-50 space-y-8 flex-1">
@@ -1849,11 +1851,11 @@ export default function Applications({ navigateToTab, navigationState }) {
                 <SectionHeader title="Application Details" />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                   <div className="flex flex-col">
-                    <label className="text-[11px] font-bold text-gray-700 uppercase mb-1">Applicant Type<span className="text-red-500 ml-1 text-xs leading-none">*</span></label>
+                    <label className="text-[10px] font-bold text-gray-700 uppercase mb-1">Applicant Type<span className="text-red-500 ml-1 text-[12px] leading-none">*</span></label>
                     <select
                       value={newApplicant.profile.appDetails.applicantType}
                       onChange={(e) => updateNewApplicant('profile.appDetails.applicantType', e.target.value)}
-                      className="h-10 w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-xs text-gray-800 shadow-sm outline-none focus:border-[#3a7538]"
+                      className="h-[36px] w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-[12px] text-gray-800 shadow-sm outline-none focus:border-[#3a7538]"
                     >
                       <option value="SELECT APPLICANT TYPE">SELECT APPLICANT TYPE</option>
                       <option value="SHS GRADUATE">SHS GRADUATE</option>
@@ -1877,23 +1879,23 @@ export default function Applications({ navigateToTab, navigationState }) {
                     <InputFormField label="Suffix" value={newApplicant.profile.personal.extension} onChange={e => updateNewApplicant('profile.personal.extension', e.target.value)} />
 
                     <div className="flex flex-col">
-                      <label className="text-[11px] font-bold text-gray-700 uppercase mb-1">Date of Birth<span className="text-red-500 ml-1 text-xs leading-none">*</span></label>
+                      <label className="text-[10px] font-bold text-gray-700 uppercase mb-1">Date of Birth<span className="text-red-500 ml-1 text-[12px] leading-none">*</span></label>
                       <CustomDatePicker required value={newApplicant.profile.personal.dob} onChange={val => updateNewApplicant('profile.personal.dob', val)} />
                     </div>
 
                     <InputFormField label="Place of Birth" value={newApplicant.profile.personal.pob} onChange={e => updateNewApplicant('profile.personal.pob', e.target.value)} />
 
                     <div className="flex flex-col">
-                      <label className="text-[11px] font-bold text-gray-700 uppercase mb-1">Gender<span className="text-red-500 ml-1 text-xs leading-none">*</span></label>
-                      <select value={newApplicant.profile.personal.sex} onChange={e => updateNewApplicant('profile.personal.sex', e.target.value)} className="h-10 w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-xs text-gray-800 shadow-sm outline-none">
+                      <label className="text-[10px] font-bold text-gray-700 uppercase mb-1">Gender<span className="text-red-500 ml-1 text-[12px] leading-none">*</span></label>
+                      <select value={newApplicant.profile.personal.sex} onChange={e => updateNewApplicant('profile.personal.sex', e.target.value)} className="h-[36px] w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-[12px] text-gray-800 shadow-sm outline-none">
                         <option value="MALE">MALE</option>
                         <option value="FEMALE">FEMALE</option>
                       </select>
                     </div>
 
                     <div className="flex flex-col">
-                      <label className="text-[11px] font-bold text-gray-700 uppercase mb-1">Civil Status<span className="text-red-500 ml-1 text-xs leading-none">*</span></label>
-                      <select value={newApplicant.profile.personal.civilStatus} onChange={e => updateNewApplicant('profile.personal.civilStatus', e.target.value)} className="h-10 w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-xs text-gray-800 shadow-sm outline-none">
+                      <label className="text-[10px] font-bold text-gray-700 uppercase mb-1">Civil Status<span className="text-red-500 ml-1 text-[12px] leading-none">*</span></label>
+                      <select value={newApplicant.profile.personal.civilStatus} onChange={e => updateNewApplicant('profile.personal.civilStatus', e.target.value)} className="h-[36px] w-full px-3 py-2 bg-white border border-gray-400 rounded-md text-[12px] text-gray-800 shadow-sm outline-none">
                         <option value="SINGLE">SINGLE</option>
                         <option value="MARRIED">MARRIED</option>
                       </select>
@@ -1963,7 +1965,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                   { title: "Tertiary", key: "tertiary" }
                 ].map((level) => (
                   <div key={level.key} className="mb-4 last:mb-0">
-                    <div className="text-xs font-black text-[#376e35] uppercase mb-2">{level.title}</div>
+                    <div className="text-[12px] font-black text-[#376e35] uppercase mb-2">{level.title}</div>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                       <InputFormField required={level.key !== 'tertiary'} className={level.key === 'shs' ? "md:col-span-4" : "md:col-span-5"} label="School Name" value={newApplicant.profile.education[level.key].name} onChange={e => updateNewApplicant(`profile.education.${level.key}.name`, e.target.value)} />
                       <InputFormField required={level.key !== 'tertiary'} className={level.key === 'shs' ? "md:col-span-4" : "md:col-span-5"} label="School Address" value={newApplicant.profile.education[level.key].address} onChange={e => updateNewApplicant(`profile.education.${level.key}.address`, e.target.value)} />
@@ -1978,7 +1980,7 @@ export default function Applications({ navigateToTab, navigationState }) {
 
               <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                 <SectionHeader title="Other Information" />
-                <div className="space-y-1">
+                <div className="space-y-4">
                   {[
                     { label: 'I have a disability', key: 'isPwd' },
                     { label: 'I am part of an indigenous group', key: 'isIndigenous' },
@@ -1987,7 +1989,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                   ].map((item) => (
                     <div
                       key={item.key}
-                      className="flex items-center gap-1 p-1 m-0 rounded-lg cursor-pointer w-max"
+                      className="flex items-center gap-3 p-1 m-0 rounded-lg cursor-pointer w-max"
                       onClick={() => updateNewApplicant(`profile.otherInfo.${item.key}`, !newApplicant.profile.otherInfo[item.key])}
                     >
                       <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${newApplicant.profile.otherInfo[item.key] ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-400 bg-white hover:border-blue-400'}`}>
@@ -2004,13 +2006,13 @@ export default function Applications({ navigateToTab, navigationState }) {
             <div className="bg-gray-50 border-t border-gray-300 p-4 shrink-0 flex justify-end gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="px-4 py-2 rounded-md bg-gray-500 hover:bg-gray-600 font-bold uppercase text-xs text-white transition"
+                className="px-6 py-2 rounded bg-gray-500 hover:bg-gray-600 font-bold uppercase text-[12px] text-white transition"
               >
                 Cancel
               </button>
               <button
                 onClick={saveNewApplicant}
-                className="px-6 py-2 rounded-md bg-[#376e35] hover:bg-[#5c9c5a] text-white font-bold uppercase text-xs transition shadow flex items-center gap-2"
+                className="px-8 py-2 rounded bg-green-600 hover:bg-green-700 text-white font-bold uppercase text-[12px] transition shadow flex items-center gap-2"
               >
                 Save Applicant
               </button>
@@ -2021,16 +2023,16 @@ export default function Applications({ navigateToTab, navigationState }) {
 
       {/* --- VIEW APPLICANT MODAL --- */}
       {isModalOpen && selectedApplicant && (
-        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-6">
+        <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-6">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative bg-white rounded-[10px] shadow-2xl w-11/12 max-w-[1400px] z-10 flex flex-col max-h-[95vh] overflow-hidden">
 
-            <div className="flex items-center justify-between rounded-t-[10px] bg-[#376e35] text-white px-6 py-2.5 shrink-0">
+            <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-4 shrink-0">
               <div className="flex items-center gap-3">
-                <h3 className="font-black text-[15px] uppercase tracking-wider">Applicant Details</h3>
-                <span className=" px-3 py-1 rounded text-xs font-mono">{selectedApplicant.id}</span>
+                <h3 className="text-gray-800 font-bold uppercase tracking-wide text-[15px]">Applicant Details</h3>
+                <span className=" px-3 py-1 bg-gray-100 rounded text-xs font-mono text-gray-600">{selectedApplicant.id}</span>
               </div>
-              <button className="text-white hover:text-red-200 transition text-3xl font-bold" onClick={() => setIsModalOpen(false)}>&times;</button>
+              <button className="text-gray-400 hover:text-gray-700 transition text-2xl font-bold leading-none" onClick={() => setIsModalOpen(false)}>&times;</button>
             </div>
 
             <div className="p-8 overflow-y-auto bg-gray-50 space-y-8 flex-1">
@@ -2049,7 +2051,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                 <SectionHeader title="Personal Information" />
                 <div className="flex flex-col lg:flex-row gap-8">
                   <div className="shrink-0 flex flex-col">
-                    <label className="text-[11px] font-bold text-gray-700 uppercase mb-1">Applicant Picture</label>
+                    <label className="text-[10px] font-bold text-gray-700 uppercase mb-1">Applicant Picture</label>
                     <div className="w-48 h-48 bg-white border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center overflow-hidden">
                       {selectedApplicant.profile.personal.image ? (
                         <img
@@ -2125,7 +2127,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                   { title: "Tertiary", key: "tertiary", data: selectedApplicant.profile.education.tertiary }
                 ].map((level, idx) => (
                   <div key={idx} className="mb-4 last:mb-0">
-                    <div className="text-xs font-black text-[#376e35] uppercase mb-2">{level.title}</div>
+                    <div className="text-[12px] font-black text-[#376e35] uppercase mb-2">{level.title}</div>
                     <hr className="border-gray-200 mb-4" />
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                       <FormField className={level.key === 'shs' ? "md:col-span-4" : "md:col-span-5"} label="School Name" value={level.data.name} />
@@ -2169,7 +2171,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                       return (
                         <div key={idx} className="flex items-center justify-between p-3 border border-gray-200 rounded-xl shadow-sm bg-gray-50 hover:bg-white transition">
                           <div className="flex items-center overflow-hidden w-full">
-                            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center text-[#376e35] mr-3 shrink-0 overflow-hidden">
+                            <div className="w-10 h-[36px] bg-green-100 rounded-lg flex items-center justify-center text-[#376e35] mr-3 shrink-0 overflow-hidden">
                               {isImage ? (
                                 <img src={getImageUrl(doc.path)} alt="Thumbnail" className="w-full h-full object-cover" />
                               ) : (
@@ -2190,7 +2192,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                     })}
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-500 italic uppercase">No documents submitted.</p>
+                  <p className="text-[12px] text-gray-500 italic uppercase">No documents submitted.</p>
                 )}
               </div>
             </div>
@@ -2198,14 +2200,14 @@ export default function Applications({ navigateToTab, navigationState }) {
             <div className="bg-gray-50 border-t border-gray-300 p-4 shrink-0 flex justify-end gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
               <button
                 onClick={() => exportFormsToPDF([selectedApplicant])}
-                className="px-4 py-2 rounded-md bg-blue-700 hover:bg-blue-600 font-bold uppercase text-xs text-white transition flex items-center gap-2 shadow"
+                className="px-6 py-2 rounded bg-blue-700 hover:bg-blue-600 font-bold uppercase text-[12px] text-white transition flex items-center gap-2 shadow"
               >
                 <FaPrint /> Print Form
               </button>
               <div className="flex-1"></div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="px-4 py-2 rounded-md bg-gray-400 hover:bg-gray-600 font-bold uppercase text-xs text-white transition"
+                className="px-6 py-2 rounded bg-gray-400 hover:bg-gray-600 font-bold uppercase text-[12px] text-white transition"
               >
                 Close
               </button>
@@ -2214,9 +2216,9 @@ export default function Applications({ navigateToTab, navigationState }) {
                   setIsModalOpen(false);
                   openInterviewModal(selectedApplicant);
                 }}
-                className="px-6 py-2 rounded-md bg-[#376e35] hover:bg-[#3a7538] text-white font-bold uppercase text-xs transition shadow flex items-center gap-2"
+                className="px-8 py-2 rounded bg-[#376e35] hover:bg-[#3a7538] text-white font-bold uppercase text-[12px] transition shadow flex items-center gap-2"
               >
-                <MessageSquare size={16} />
+                <MessageSquare size={14} />
                 Interview
               </button>
             </div>
@@ -2227,18 +2229,16 @@ export default function Applications({ navigateToTab, navigationState }) {
 
       {/* --- INTERVIEW SCORING MODAL --- */}
       {isInterviewModalOpen && selectedApplicant && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center pt-6">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center pt-6">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsInterviewModalOpen(false)}></div>
           <div className="relative bg-white rounded-[10px] shadow-2xl w-full max-w-[1100px] h-[95vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
 
-            <div className="flex items-center justify-between rounded-t-[10px] bg-[#376e35] text-white px-6 py-2.5 shrink-0">
-              <div className="flex items-center justify-between w-full ">
-                <h3 className="font-black text-[15px] uppercase tracking-tight text-white">Interview Rubric {(isArchiveMode || userRole === "SuperAdmin")}</h3>
-                <button onClick={() => setIsInterviewModalOpen(false)} className=" text-gray-100 hover:text-red-200 font-bold text-3xl leading-none">&times;</button>
-              </div>
+            <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-4 shrink-0">
+              <h3 className="text-gray-800 font-bold uppercase tracking-wide text-[15px]">Final Admission Interview Rubric {(isArchiveMode || userRole === "SuperAdmin")}</h3>
+              <button onClick={() => setIsInterviewModalOpen(false)} className="text-gray-400 hover:text-gray-700 transition text-2xl font-bold leading-none">&times;</button>
             </div>
             <div className="bg-white border-b border-gray-300 px-6 py-2 shrink-0">
-              <div className="grid grid-cols-12 gap-4 mt-4 text-xs">
+              <div className="grid grid-cols-12 gap-4 mt-4 text-[12px]">
                 <div className="col-span-8 flex flex-col">
                   <label className="font-bold text-gray-700 uppercase text-xs">Program</label>
                   <div className="border-b border-gray-400 py-1 font-semibold uppercase text-gray-900">{selectedApplicant.profile.appDetails.firstChoice}</div>
@@ -2278,7 +2278,7 @@ export default function Applications({ navigateToTab, navigationState }) {
 
             <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
               <div className="mb-6 border-2 border-black">
-                <div className="grid grid-cols-12 border-b-2 border-black bg-gray-200 font-bold text-center text-xs uppercase">
+                <div className="grid grid-cols-12 border-b-2 border-black bg-gray-200 font-bold text-center text-[12px] uppercase">
                   <div className="col-span-2 border-r border-black p-1">Rating</div>
                   <div className="col-span-10 p-1">Professional Description</div>
                 </div>
@@ -2289,7 +2289,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                   { range: "60-69", label: "Fair", desc: "Needs improvement; partially meets expectations." },
                   { range: "59 Below", label: "Poor", desc: "Does not meet expectations; major weaknesses observed." },
                 ].map((row, i) => (
-                  <div key={i} className="grid grid-cols-12 border-b border-black last:border-0 text-xs">
+                  <div key={i} className="grid grid-cols-12 border-b border-black last:border-0 text-[12px]">
                     <div className="col-span-2 border-r border-black flex flex-col items-center justify-center p-1 bg-white">
                       <span className="font-bold">{row.range}</span>
                       <span className="text-xs uppercase">{row.label}</span>
@@ -2305,8 +2305,8 @@ export default function Applications({ navigateToTab, navigationState }) {
                 {rubricData.map((section) => (
                   <div key={section.id}>
                     <h4 className="font-bold text-md uppercase mb-1">{section.title}</h4>
-                    <table className="w-full border-2 border-black text-xs bg-white">
-                      <thead className="bg-gray-100 uppercase text-xs font-bold border-b-2 border-black">
+                    <table className="w-full border-2 border-black text-[12px] bg-white">
+                      <thead className="bg-white text-black uppercase text-xs font-bold border-b-2 border-black">
                         <tr>
                           <th className="border-r border-black p-2 w-1/5 text-left">Criteria</th>
                           <th className="border-r border-black p-2 w-2/5 text-left">Professional Description</th>
@@ -2334,8 +2334,8 @@ export default function Applications({ navigateToTab, navigationState }) {
                                 value={interviewRatings[crit.id] !== undefined ? interviewRatings[crit.id] : ""}
                                 onChange={(e) => handleRatingChange(crit.id, e.target.value)}
                                 onDoubleClick={() => { if (!isArchiveMode && userRole !== "SuperAdmin") setActiveRatingDropdown(crit.id); }}
-                                title={(isArchiveMode || userRole === "SuperAdmin") ? "Read only" : "Type a number or double-click for a list"}
-                                className={`w-20 text-center font-bold text-base outline-none ${(isArchiveMode || userRole === "SuperAdmin") ? 'bg-transparent text-gray-600 cursor-not-allowed' : 'cursor-text'}`}
+                                title={(isArchiveMode || userRole === "SuperAdmin") ? "" : "Type a number or double-click for a list"}
+                                className={`w-20 text-center font-bold text-[16px] outline-none ${(isArchiveMode || userRole === "SuperAdmin") ? 'bg-transparent text-gray-600 cursor-not-allowed' : 'cursor-text'}`}
                               />
 
                               {activeRatingDropdown === crit.id && !isArchiveMode && userRole !== "SuperAdmin" && (
@@ -2347,7 +2347,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                                         handleRatingChange(crit.id, num.toString());
                                         setActiveRatingDropdown(null);
                                       }}
-                                      className="px-2 py-1.5 hover:bg-[#3a7538] hover:text-white cursor-pointer text-xs font-bold text-gray-800 text-center border-b last:border-none border-gray-100 transition-colors"
+                                      className="px-2 py-1.5 hover:bg-[#3a7538] hover:text-white cursor-pointer text-[12px] font-bold text-gray-800 text-center border-b last:border-none border-gray-100 transition-colors"
                                     >
                                       {num}
                                     </div>
@@ -2356,7 +2356,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                               )}
                             </td>
 
-                            <td className="p-2 text-center align-middle font-black text-base bg-gray-50">
+                            <td className="p-2 text-center align-middle font-black text-[16px] bg-gray-50">
                               {getWeightedScore(interviewRatings[crit.id], crit.weight).toFixed(2) === "0.00" && (interviewRatings[crit.id] === "" || interviewRatings[crit.id] === undefined)
                                 ? "-"
                                 : getWeightedScore(interviewRatings[crit.id], crit.weight).toFixed(2)
@@ -2367,8 +2367,8 @@ export default function Applications({ navigateToTab, navigationState }) {
                       </tbody>
                     </table>
                     <div className="bg-gray-100 border-x-2 border-b-2 pr-14 border-black py-1 flex justify-end items-center gap-16">
-                      <span className="font-bold text-base uppercase text-gray-800">Total:</span>
-                      <span className="font-black text-base text-[#376e35]">{getSectionTotal(section)}</span>
+                      <span className="font-bold text-[15px] uppercase text-gray-800">Total:</span>
+                      <span className="font-black text-[16px] text-[#376e35]">{getSectionTotal(section)}</span>
                     </div>
                   </div>
                 ))}
@@ -2379,7 +2379,7 @@ export default function Applications({ navigateToTab, navigationState }) {
             <div className="bg-gray-50 border-t border-gray-400 text-white p-4 shrink-0 flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
               <div className="flex items-center gap-6">
                 <div className="flex items-center gap-4">
-                  <span className="uppercase text-gray-800 font-bold text-xs">General Weighted Average :</span>
+                  <span className="uppercase text-gray-800 font-bold text-[12px]">General Weighted Average :</span>
                   <span className="text-3xl font-black text-[#376e35] tracking-wider">{totalScore}</span>
                 </div>
 
@@ -2387,7 +2387,7 @@ export default function Applications({ navigateToTab, navigationState }) {
 
                 <div className="flex gap-2.5">
                   <span className="text-[15px] font-bold pt-2 text-gray-700 uppercase leading-none mb-1">Remarks:</span>
-                  <div className={`px-4 py-2 border rounded  text-xs font-black uppercase tracking-wider shadow-sm ${currentRemarks.color}`}>
+                  <div className={`px-[14px] py-[6px] border rounded  text-xs font-black uppercase tracking-wider shadow-sm ${currentRemarks.color}`}>
                     {currentRemarks.label}
                   </div>
                 </div>
@@ -2396,14 +2396,14 @@ export default function Applications({ navigateToTab, navigationState }) {
               <div className="flex gap-3">
                 <button
                   onClick={() => setIsInterviewModalOpen(false)}
-                  className="px-4 py-1.5 rounded-md bg-gray-700 hover:bg-gray-600 font-bold uppercase text-xs transition"
+                  className="px-6 py-2 rounded bg-gray-700 hover:bg-gray-600 font-bold uppercase text-[12px] transition"
                 >
                   {(isArchiveMode || userRole === "SuperAdmin") ? "Close " : "Cancel"}
                 </button>
                 {(!isArchiveMode && userRole === "Admin") && (
                   <button
                     onClick={saveInterview}
-                    className="px-6 py-1.5 rounded-md bg-[#376e35] hover:bg-[#5c9c5a] text-white font-bold uppercase text-xs transition shadow-lg flex items-center gap-2"
+                    className="px-8 py-2 rounded bg-[#376e35] hover:bg-[#5c9c5a] text-white font-bold uppercase text-[12px] transition shadow-lg flex items-center gap-2"
                   >
                     Submit Evaluation
                   </button>
@@ -2417,22 +2417,20 @@ export default function Applications({ navigateToTab, navigationState }) {
 
       {/* --- EDIT RUBRIC MODAL --- */}
       {isRubricEditModalOpen && !isArchiveMode && userRole === "SuperAdmin" && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center pt-6">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center pt-6">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsRubricEditModalOpen(false)}></div>
           <div className="relative bg-white rounded-[10px] shadow-2xl w-full max-w-[1100px] h-[95vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
 
-            <div className="flex items-center justify-between rounded-t-[10px] bg-[#376e35] text-white px-6 py-2.5 shrink-0">
-              <div className="flex items-center justify-between w-full ">
-                <h3 className="font-black text-[15px] uppercase tracking-tight text-white flex items-center gap-3">
-                  Edit Interview Rubric
-                </h3>
-                <button onClick={() => setIsRubricEditModalOpen(false)} className=" text-gray-100 hover:text-red-200 font-bold text-3xl leading-none">&times;</button>
-              </div>
+            <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-4 shrink-0">
+              <h3 className="text-gray-800 font-bold uppercase tracking-wide text-[15px] flex items-center gap-3">
+                Edit Admission Interview Rubric
+              </h3>
+              <button onClick={() => setIsRubricEditModalOpen(false)} className="text-gray-400 hover:text-gray-700 transition text-2xl font-bold leading-none">&times;</button>
             </div>
 
             <div className="bg-white border-b border-gray-300 px-6 py-2 shrink-0">
               <div className="flex justify-end mt-4 pb-2">
-                <label className="bg-[#376e35] hover:bg-[#3a7538] text-white px-3 py-1.5 rounded-md shadow cursor-pointer flex items-center gap-2 text-xs font-bold transition uppercase tracking-wide">
+                <label className="bg-[#376e35] hover:bg-[#3a7538] text-white px-[14px] py-[6px] rounded-lg shadow cursor-pointer flex items-center gap-2 text-[12px] font-bold transition uppercase tracking-wide">
                   <FaUpload />
                   Import CSV
                   <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
@@ -2443,7 +2441,7 @@ export default function Applications({ navigateToTab, navigationState }) {
             <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
 
               <div className="mb-6 border-2 border-black opacity-80 pointer-events-none">
-                <div className="grid grid-cols-12 border-b-2 border-black bg-gray-200 font-bold text-center text-xs uppercase">
+                <div className="grid grid-cols-12 border-b-2 border-black bg-gray-200 font-bold text-center text-[12px] uppercase">
                   <div className="col-span-2 border-r border-black p-1">Rating</div>
                   <div className="col-span-10 p-1">Professional Description</div>
                 </div>
@@ -2454,7 +2452,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                   { range: "60-69", label: "Fair", desc: "Needs improvement; partially meets expectations." },
                   { range: "59 Below", label: "Poor", desc: "Does not meet expectations; major weaknesses observed." },
                 ].map((row, i) => (
-                  <div key={i} className="grid grid-cols-12 border-b border-black last:border-0 text-xs">
+                  <div key={i} className="grid grid-cols-12 border-b border-black last:border-0 text-[12px]">
                     <div className="col-span-2 border-r border-black flex flex-col items-center justify-center p-1 bg-white">
                       <span className="font-bold">{row.range}</span>
                       <span className="text-xs uppercase">{row.label}</span>
@@ -2485,8 +2483,8 @@ export default function Applications({ navigateToTab, navigationState }) {
                       </button>
                     </div>
 
-                    <table className="w-full border-2 border-black text-xs bg-white">
-                      <thead className="bg-gray-100 uppercase text-xs font-bold border-b-2 border-black">
+                    <table className="w-full border-2 border-black text-[12px] bg-white">
+                      <thead className="bg-white text-black uppercase text-xs font-bold border-b-2 border-black">
                         <tr>
                           <th className="border-r border-black p-2 w-1/5 text-left">Criteria</th>
                           <th className="border-r border-black p-2 w-2/5 text-left">Professional Description</th>
@@ -2523,16 +2521,16 @@ export default function Applications({ navigateToTab, navigationState }) {
                               />
                             </td>
                             <td className="border-r border-black py-2 text-center align-middle bg-gray-100">
-                              <input disabled className="w-20 text-center font-bold text-base outline-none bg-transparent" placeholder="-" />
+                              <input disabled className="w-20 text-center font-bold text-[16px] outline-none bg-transparent" placeholder="-" />
                             </td>
-                            <td className="p-0 text-center align-middle font-black text-base bg-gray-100 text-gray-400 relative">
+                            <td className="p-0 text-center align-middle font-black text-[16px] bg-gray-100 text-gray-400 relative">
                               <span className="group-hover:opacity-0 transition-opacity flex items-center justify-center w-full h-full min-h-[40px]">-</span>
                               <button
                                 onClick={() => handleRemoveCriteria(sIndex, cIndex)}
                                 className="absolute inset-0 w-full h-full flex items-center justify-center  text-red-600 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                                 title="Remove Row"
                               >
-                                <FaTrash size={16} />
+                                <FaTrash size={14} />
                               </button>
                             </td>
                           </tr>
@@ -2551,15 +2549,15 @@ export default function Applications({ navigateToTab, navigationState }) {
                       </tbody>
                     </table>
                     <div className="bg-gray-100 border-x-2 border-b-2 pr-14 border-black py-1 flex justify-end items-center gap-16">
-                      <span className="font-bold text-base uppercase text-[#376e35]">Total Section Weight:</span>
-                      <span className="font-black text-base text-[#376e35]">{getEditSectionTotal(section)}%</span>
+                      <span className="font-bold text-[15px] uppercase text-[#376e35]">Total Section Weight:</span>
+                      <span className="font-black text-[16px] text-[#376e35]">{getEditSectionTotal(section)}%</span>
                     </div>
                   </div>
                 ))}
 
                 <button
                   onClick={handleAddSection}
-                  className="w-full py-2 text-base mt-6 border-2 border-dashed border-[#3a7538] text-[#376e35] font-bold uppercase rounded-lg hover:bg-green-50 hover:text-[#5c9c5a] transition flex justify-center items-center gap-2 shadow-sm"
+                  className="w-full py-2 text-[15px] mt-6 border-2 border-dashed border-[#3a7538] text-[#376e35] font-bold uppercase rounded-lg hover:bg-green-50 hover:text-[#5c9c5a] transition flex justify-center items-center gap-2 shadow-sm"
                 >
                   <FaPlus /> Add New Section
                 </button>
@@ -2571,7 +2569,7 @@ export default function Applications({ navigateToTab, navigationState }) {
             <div className="bg-gray-50 border-t border-gray-400 p-4 shrink-0 flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
               <div className="flex items-center gap-6">
                 <div className="flex items-center gap-4">
-                  <span className="uppercase text-gray-800 font-bold text-xs">General Weighted Total :</span>
+                  <span className="uppercase text-gray-800 font-bold text-[12px]">General Weighted Total :</span>
                   <span className={`text-3xl font-black tracking-wider ${getEditTotalRubricWeight() === 100 ? 'text-[#376e35]' : 'text-red-600'}`}>
                     {getEditTotalRubricWeight()}%
                   </span>
@@ -2581,13 +2579,13 @@ export default function Applications({ navigateToTab, navigationState }) {
               <div className="flex gap-3">
                 <button
                   onClick={() => setIsRubricEditModalOpen(false)}
-                  className="px-4 py-2 rounded-md bg-gray-700 hover:bg-gray-600 font-bold uppercase text-xs text-white transition"
+                  className="px-6 py-2 rounded bg-gray-500 hover:bg-gray-600 font-bold uppercase text-[12px] text-white transition"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveRubric}
-                  className="px-6 py-2 rounded-md bg-[#376e35] hover:bg-[#5c9c5a] text-white font-bold uppercase text-xs transition shadow-lg flex items-center gap-2"
+                  className="px-8 py-2 rounded bg-green-600 hover:bg-green-700 text-white font-bold uppercase text-[12px] transition shadow-lg flex items-center gap-2"
                 >
                   Save Rubric
                 </button>
@@ -2599,12 +2597,12 @@ export default function Applications({ navigateToTab, navigationState }) {
 
       {/* --- PREVIEW DOCUMENT MODAL --- */}
       {previewDoc && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-5xl h-[85vh] rounded-2xl flex flex-col overflow-hidden shadow-2xl relative">
             <div className="bg-white text-[#376e35] px-6 py-4 flex justify-between items-center shrink-0 z-10 relative shadow-md">
               <div className="flex items-center gap-4">
                 <div>
-                  <h3 className="font-bold text-base uppercase tracking-wider">{previewDoc.name}</h3>
+                  <h3 className="font-bold text-[16px] uppercase tracking-wider">{previewDoc.name}</h3>
                 </div>
 
                 {['png', 'jpg', 'jpeg'].includes(previewDoc.format.toLowerCase()) && (
@@ -2628,7 +2626,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                 onClick={() => setPreviewDoc(null)}
                 className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center transition-colors"
               >
-                <FaTimes size={16} />
+                <FaTimes size={14} />
               </button>
             </div>
 
@@ -2673,31 +2671,31 @@ export default function Applications({ navigateToTab, navigationState }) {
 
       {/* --- CONFIRMATION MODAL --- */}
       {isConfirmModalOpen && !isArchiveMode && userRole === "Admin" && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center pt-6">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center pt-6">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsConfirmModalOpen(false)}></div>
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md z-10 flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
 
-            <div className={`flex items-center justify-between px-6 py-4 shrink-0 ${confirmActionStatus === 'Passed' ? 'bg-[#3a7538]' : 'bg-red-600'}`}>
-              <h3 className="font-bold text-base text-white uppercase tracking-wider">Confirm Action</h3>
-              <button className="text-white hover:text-gray-200 transition text-xl font-bold leading-none" onClick={() => setIsConfirmModalOpen(false)}>&times;</button>
+            <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-4 shrink-0">
+              <h3 className="text-gray-800 font-bold uppercase tracking-wide text-[16px]">Confirm Action</h3>
+              <button className="text-gray-400 hover:text-gray-700 transition text-2xl font-bold leading-none" onClick={() => setIsConfirmModalOpen(false)}>&times;</button>
             </div>
 
             <div className="p-6 text-center text-gray-700">
-              <p className="text-base mb-2">
-                Are you sure you want to mark the selected <strong>{selectedApplicantIds.length}</strong> applicant(s) as <span className={`font-black uppercase tracking-wider ${confirmActionStatus === 'Passed' ? 'text-[#3a7538]' : 'text-red-600'}`}>{confirmActionStatus}</span>?
+              <p className="text-[16px] mb-2">
+                Are you sure you want to mark the selected <strong>{selectedApplicantIds.length}</strong> applicant(s) as <span className="font-black uppercase tracking-wider text-green-600">{confirmActionStatus}</span>?
               </p>
             </div>
 
             <div className="bg-gray-50 border-t border-gray-200 p-4 flex justify-end gap-3">
               <button
                 onClick={() => setIsConfirmModalOpen(false)}
-                className="px-4 py-1.5 rounded-md bg-gray-500 hover:bg-gray-600 font-bold uppercase text-xs text-white transition"
+                className="px-6 py-2 rounded bg-gray-500 hover:bg-gray-600 font-bold uppercase text-[12px] text-white transition"
               >
                 Cancel
               </button>
               <button
                 onClick={executeBulkUpdate}
-                className={`px-6 py-1.5 rounded-md font-bold uppercase text-xs text-white transition shadow ${confirmActionStatus === 'Passed' ? 'bg-[#3a7538] hover:bg-[#5c9c5a]' : 'bg-red-600 hover:bg-red-500'}`}
+                className="px-8 py-2 rounded font-bold uppercase text-[12px] text-white transition shadow bg-green-600 hover:bg-green-700"
               >
                 Confirm
               </button>

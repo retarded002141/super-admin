@@ -1,11 +1,19 @@
 import { useState, useEffect, useRef } from "react";
-import api from "../../services/api";
+
+
+import api from "../../../services/api";
+import { useToast } from "../context/ToastContext.jsx";
+
+import { PageLoader, ButtonSpinner } from "../components/Loaders.jsx";
 import {
   Calendar as CalendarIcon, ChevronLeft, ChevronRight, Save, Edit3, Shield, Activity, AlertTriangle, Trash2, Clock, User, CheckCircle, UserCog,
   Wrench, Bell, Archive, Database, RefreshCw, History, Eye, EyeOff, UserPlus, BookOpen, Plus, Landmark
 } from "lucide-react";
 
 export default function Settings({ navigateToTab }) {
+  const { toast } = useToast();
+
+
 
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem("adminSettingsTab") || "general");
 
@@ -15,8 +23,10 @@ export default function Settings({ navigateToTab }) {
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [academicYears, setAcademicYears] = useState([]);
   const [pastAcademicYears, setPastAcademicYears] = useState([]);
+  const [systemAdminEmail, setSystemAdminEmail] = useState("");
 
   const [currentUserRole, setCurrentUserRole] = useState("SuperAdmin");
 
@@ -52,7 +62,7 @@ export default function Settings({ navigateToTab }) {
     _id: "", name: "", abbreviation: "", address: "", openingDays: "", openingTime: "", closingTime: "", dailyLimit: ""
   });
 
-  const [securitySettings, setSecuritySettings] = useState({ twoFactorAuth: false, applicantEmailAuth: true });
+  const [securitySettings, setSecuritySettings] = useState({ twoFactorAuth: false });
   const [notifSettings, setNotifSettings] = useState({
     emailNewApp: true,
     docUploads: true,
@@ -62,7 +72,6 @@ export default function Settings({ navigateToTab }) {
 
   const [activityLogs, setActivityLogs] = useState([]);
 
-  // --- ADMIN ACCOUNTS STATE ---
   const [adminList, setAdminList] = useState([]);
   const [adminUsername, setAdminUsername] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
@@ -75,7 +84,6 @@ export default function Settings({ navigateToTab }) {
 
   const [editAdminModal, setEditAdminModal] = useState({ isOpen: false, admin: null });
 
-  // --- COURSES & INSTITUTES STATE ---
   const [courses, setCourses] = useState([]);
   const [institutes, setInstitutes] = useState([]);
   const [courseModal, setCourseModal] = useState({ isOpen: false, data: { name: "", abbreviation: "", institute: "", limit: 0 }, isEdit: false });
@@ -86,7 +94,6 @@ export default function Settings({ navigateToTab }) {
     isEdit: false
   });
 
-  // Permissions config
   const rolePermissions = {
     SuperAdmin: {
       applicantManagement: true, admissionStatus: true, systemProfile: true, systemMaintenance: true, activityLogs: true, manageAdmins: true
@@ -117,18 +124,29 @@ export default function Settings({ navigateToTab }) {
     }
 
     const fetchInitialData = async () => {
-      let currentRole = "SuperAdmin";
+      let currentRole = "Admin";
       let instAbbr = "";
 
       try {
         const profileRes = await api.get('/admin/profile');
         if (profileRes.data && profileRes.data.role) {
           currentRole = profileRes.data.role;
-          setCurrentUserRole(profileRes.data.role);
           instAbbr = profileRes.data.institute;
+          setCurrentUserRole(currentRole);
+          if (profileRes.data.email) {
+            setSystemAdminEmail(profileRes.data.email);
+          }
+          if (currentRole !== "SuperAdmin" && (activeTab === "admin" || activeTab === "maintenance")) {
+            setActiveTab("general");
+          }
+        } else {
+          setCurrentUserRole("Admin");
+          if (activeTab === "admin" || activeTab === "maintenance") setActiveTab("general");
         }
       } catch (error) {
         console.error("Failed to fetch profile role");
+        setCurrentUserRole("Admin");
+        if (activeTab === "admin" || activeTab === "maintenance") setActiveTab("general");
       }
 
       try {
@@ -166,9 +184,20 @@ export default function Settings({ navigateToTab }) {
       }
     };
 
-    fetchInitialData();
-    fetchSettings();
-    fetchLogs();
+    const loadAll = async () => {
+      try {
+        await Promise.all([
+          fetchInitialData(),
+          fetchSettings(),
+          fetchLogs()
+        ]);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+    loadAll();
   }, []);
 
   const fetchSettings = async () => {
@@ -250,20 +279,14 @@ export default function Settings({ navigateToTab }) {
   };
 
   useEffect(() => {
-    if (activeTab === "general") {
-      fetchSettings();
-      if (currentUserRole !== "SuperAdmin") {
+    if (currentUserRole === "SuperAdmin") {
+      if (activeTab === "admin") {
+        fetchAdmins();
+      }
+    } else {
+      if (activeTab === "general") {
         fetchCourses();
       }
-    } else if (activeTab === "admin" && currentUserRole === "SuperAdmin") {
-      fetchAdmins();
-    } else if (activeTab === "notification") {
-      fetchSettings();
-    } else if (activeTab === "security") {
-      fetchSettings();
-      fetchLogs();
-    } else if (activeTab === "maintenance" && currentUserRole === "SuperAdmin") {
-      fetchSettings();
     }
   }, [activeTab, currentUserRole]);
 
@@ -339,7 +362,7 @@ export default function Settings({ navigateToTab }) {
   const handleInitiateSaveAdmission = () => {
     if (settings.admissionOpen) {
       if (!settings.schoolYear || !settings.applicationDeadline) {
-        alert("Validation Error: Academic Year and Application Deadline MUST be filled out before saving an Open admission portal.");
+        toast.info("Validation Error: Academic Year and Application Deadline MUST be filled out before saving an Open admission portal.");
         return;
       }
     }
@@ -377,9 +400,9 @@ export default function Settings({ navigateToTab }) {
       }
 
       await logAction(`Admission Portal set to ${settings.admissionOpen ? 'OPEN' : 'CLOSED'}`);
-      alert("Admission settings saved successfully!");
+      toast.info("Admission settings saved successfully!");
     } catch (err) {
-      alert("Failed to save admission settings.");
+      toast.info("Failed to save admission settings.");
     } finally {
       setIsLoading(false);
     }
@@ -404,10 +427,10 @@ export default function Settings({ navigateToTab }) {
       setIsEditingProfile(false);
 
       await logAction("Updated System Configuration Profile");
-      alert("System profile saved successfully!");
+      toast.info("System profile saved successfully!");
 
     } catch (err) {
-      alert("Failed to save profile.");
+      toast.info("Failed to save profile.");
     } finally {
       setIsLoading(false);
     }
@@ -419,10 +442,10 @@ export default function Settings({ navigateToTab }) {
       await api.put(`/admin/institutes/${myInstitute._id}`, myInstitute);
       setIsEditingProfile(false);
       await logAction("Updated Institute Profile");
-      alert("Institute profile saved successfully!");
+      toast.info("Institute profile saved successfully!");
       fetchInstitutes();
     } catch (err) {
-      alert("Failed to save institute profile.");
+      toast.info("Failed to save institute profile.");
     } finally {
       setIsLoading(false);
     }
@@ -435,18 +458,18 @@ export default function Settings({ navigateToTab }) {
 
       await api.put('/admin/settings', fullSettings);
       await logAction("Updated Notification Settings");
-      alert("Notification preferences saved successfully!");
+      toast.info("Notification preferences saved successfully!");
     } catch (err) {
-      alert("Failed to save notification preferences.");
+      toast.info("Failed to save notification preferences.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleToggleSecurity = async (key) => {
-    if (isArchiveMode || currentUserRole !== "SuperAdmin") return; 
-    const newState = !securitySettings[key];
-    const updatedSecurity = { ...securitySettings, [key]: newState };
+  const handleToggle2FA = async () => {
+    if (isArchiveMode || currentUserRole !== "SuperAdmin") return;
+    const newState = !securitySettings.twoFactorAuth;
+    const updatedSecurity = { ...securitySettings, twoFactorAuth: newState };
     setSecuritySettings(updatedSecurity);
 
     try {
@@ -459,15 +482,14 @@ export default function Settings({ navigateToTab }) {
       logAction(`${newState ? "Enabled" : "Disabled"} Two-Factor Authentication`);
 
       if (newState === true) {
-        alert("2FA is now ENABLED. For your security, you will be logged out to verify your login.");
+        toast.info("2FA is now ENABLED. For your security, you will be logged out to verify your login.");
         localStorage.removeItem("adminToken");
-        localStorage.removeItem('isAdminAuthenticated');
         window.location.reload();
       } else {
-        alert("2FA is now DISABLED and saved!");
+        toast.info("2FA is now DISABLED and saved!");
       }
     } catch (err) {
-      alert("Failed to save 2FA setting.");
+      toast.info("Failed to save 2FA setting.");
       setSecuritySettings({ ...securitySettings, twoFactorAuth: !newState });
     } finally {
       setIsLoading(false);
@@ -487,14 +509,14 @@ export default function Settings({ navigateToTab }) {
       try {
         await api.delete('/admin/logs');
         setActivityLogs([]);
-      } catch (err) { alert("Failed to clear logs."); }
+      } catch (err) { toast.info("Failed to clear logs."); }
     }
   };
 
   const handleInitiateDataSwitch = () => {
     if (isArchiveMode || !canEditMaintenance) return;
     if (!targetYear) {
-      alert("Please select a past academic year first.");
+      toast.info("Please select a past academic year first.");
       return;
     }
     setModals(prev => ({ ...prev, restart: true, restartMessage: `Are you sure you want to view Archived Data for Academic Year ${targetYear}?` }));
@@ -506,11 +528,11 @@ export default function Settings({ navigateToTab }) {
       setModals(prev => ({ ...prev, restart: false }));
       sessionStorage.setItem("archiveViewYear", targetYear);
       logAction(`Viewing Historical Data: AY ${targetYear}`);
-      alert(`Now viewing archived data for ${targetYear}.\n\nTo return to the current live system, click the "Return to Live" button on the Applications page.`);
+      toast.info(`Now viewing archived data for ${targetYear}.\n\nTo return to the current live system, click the "Return to Live" button on the Applications page.`);
       setTargetYear("");
       navigateToTab('pre-admission-applications');
     } catch (err) {
-      alert("Failed to load archive.");
+      toast.info("Failed to load archive.");
     } finally {
       setIsLoading(false);
     }
@@ -523,7 +545,7 @@ export default function Settings({ navigateToTab }) {
 
   const handleConfirmReset = async () => {
     if (modals.resetCode !== "RESET") {
-      alert("Incorrect confirmation code. Please type RESET.");
+      toast.info("Incorrect confirmation code. Please type RESET.");
       return;
     }
 
@@ -532,14 +554,13 @@ export default function Settings({ navigateToTab }) {
       setIsLoading(true);
 
       const res = await api.post('/admin/applicants/reset-system');
-      alert(res.data.msg || "System successfully archived and reset. You will now be logged out.");
+      toast.info(res.data.msg || "System successfully archived and reset. You will now be logged out.");
 
       localStorage.removeItem("adminToken");
-      localStorage.removeItem('isAdminAuthenticated');
       window.location.reload();
 
     } catch (err) {
-      alert("Reset failed.");
+      toast.info("Reset failed.");
     } finally {
       setIsLoading(false);
     }
@@ -550,12 +571,12 @@ export default function Settings({ navigateToTab }) {
     if (isArchiveMode || !canManageAdmins) return;
 
     if (!adminUsername.trim() || !adminEmail.trim() || !adminPassword.trim() || !adminConfirmPassword.trim()) {
-      alert("Please enter all details.");
+      toast.info("Please enter all details.");
       return;
     }
 
     if (adminPassword !== adminConfirmPassword) {
-      alert("Passwords do not match!");
+      toast.info("Passwords do not match!");
       return;
     }
 
@@ -572,7 +593,7 @@ export default function Settings({ navigateToTab }) {
         role: adminRole
       });
 
-      alert(res.data.msg);
+      toast.info(res.data.msg);
 
       setAdminUsername("");
       setAdminEmail("");
@@ -584,7 +605,7 @@ export default function Settings({ navigateToTab }) {
       fetchAdmins();
 
     } catch (err) {
-      alert(err.response?.data?.msg || "Failed to create admin account.");
+      toast.info(err.response?.data?.msg || "Failed to create admin account.");
     } finally {
       setIsLoading(false);
     }
@@ -595,10 +616,10 @@ export default function Settings({ navigateToTab }) {
     if (window.confirm("Are you sure you want to delete this administrator account?")) {
       try {
         await api.delete(`/admin/user/${id}`);
-        alert("Admin deleted successfully.");
+        toast.info("Admin deleted successfully.");
         fetchAdmins();
       } catch (err) {
-        alert("Failed to delete admin.");
+        toast.info("Failed to delete admin.");
       }
     }
   };
@@ -608,32 +629,32 @@ export default function Settings({ navigateToTab }) {
     try {
       const payload = { ...editAdminModal.admin };
       await api.put(`/admin/user/${editAdminModal.admin._id}`, payload);
-      alert("Admin updated successfully.");
+      toast.info("Admin updated successfully.");
       setEditAdminModal({ isOpen: false, admin: null });
       fetchAdmins();
     } catch (err) {
-      alert("Failed to update admin.");
+      toast.info("Failed to update admin.");
     }
   };
 
   const handleSaveInstitute = async () => {
     if (!instituteModal.data.name.trim() || !instituteModal.data.abbreviation.trim()) {
-      alert("Please provide both the Full Name and Abbreviation.");
+      toast.info("Please provide both the Full Name and Abbreviation.");
       return;
     }
     try {
       if (instituteModal.isEdit) {
         await api.put(`/admin/institutes/${instituteModal.data._id}`, instituteModal.data);
-        alert("Institute updated successfully!");
+        toast.info("Institute updated successfully!");
       } else {
         await api.post('/admin/institutes', instituteModal.data);
-        alert("Institute added successfully!");
+        toast.info("Institute added successfully!");
       }
       setInstituteModal({ isOpen: false, data: { name: "", abbreviation: "", address: "", openingDays: "", openingTime: "", closingTime: "", dailyLimit: "" }, isEdit: false });
       fetchInstitutes();
     } catch (err) {
       console.error("Institute Save Error:", err);
-      alert(err.response?.data?.msg || "Failed to save institute.");
+      toast.info(err.response?.data?.msg || "Failed to save institute.");
     }
   };
 
@@ -641,9 +662,9 @@ export default function Settings({ navigateToTab }) {
     if (window.confirm(`Are you sure you want to delete "${abbr}"?`)) {
       try {
         await api.delete(`/admin/institutes/${id}`);
-        alert("Institute deleted successfully.");
+        toast.info("Institute deleted successfully.");
         fetchInstitutes();
-      } catch (err) { alert("Failed to delete institute."); }
+      } catch (err) { toast.info("Failed to delete institute."); }
     }
   };
 
@@ -656,7 +677,7 @@ export default function Settings({ navigateToTab }) {
     };
 
     if (!payload.name || !payload.abbreviation || !payload.institute) {
-      alert("Please fill out Course Name, Abbreviation, and ensure Institute is set.");
+      toast.info("Please fill out Course Name, Abbreviation, and ensure Institute is set.");
       return;
     }
 
@@ -667,7 +688,7 @@ export default function Settings({ navigateToTab }) {
     );
 
     if (isDuplicate) {
-      alert(`A course with the abbreviation '${payload.abbreviation}' already exists for your institute.`);
+      toast.info(`A course with the abbreviation '${payload.abbreviation}' already exists for your institute.`);
       return;
     }
 
@@ -675,18 +696,18 @@ export default function Settings({ navigateToTab }) {
       setIsLoading(true);
       if (courseModal.isEdit) {
         await api.put(`/admin/courses/${courseModal.data._id}`, payload);
-        alert("Course updated successfully!");
+        toast.info("Course updated successfully!");
         logAction(`Updated Course: ${payload.name}`);
       } else {
         await api.post('/admin/courses', payload);
-        alert("Course added successfully!");
+        toast.info("Course added successfully!");
         logAction(`Added new Course: ${payload.name}`);
       }
       setCourseModal({ isOpen: false, data: { name: "", abbreviation: "", institute: "", limit: 0 }, isEdit: false });
       fetchCourses();
     } catch (err) {
       console.error("Course Save Error:", err);
-      alert(err.response?.data?.msg || "Failed to save course to the database.");
+      toast.info(err.response?.data?.msg || "Failed to save course to the database.");
     } finally {
       setIsLoading(false);
     }
@@ -696,11 +717,11 @@ export default function Settings({ navigateToTab }) {
     if (window.confirm(`Are you sure you want to delete the course "${name}"? It will be removed from the student application choices.`)) {
       try {
         await api.delete(`/admin/courses/${id}`);
-        alert("Course deleted successfully.");
+        toast.info("Course deleted successfully.");
         logAction(`Deleted Course: ${name}`);
         fetchCourses();
       } catch (err) {
-        alert("Failed to delete course.");
+        toast.info("Failed to delete course.");
       }
     }
   };
@@ -717,22 +738,29 @@ export default function Settings({ navigateToTab }) {
     ] : [])
   ];
 
+  if (initialLoading) {
+    return <PageLoader message="Loading settings configurations..." />;
+  }
+
   return (
     <div className="h-full w-full bg-gray-50 font-sans overflow-hidden flex flex-col transition-all duration-300 ease-in-out ml-2">
 
       {/* Main container */}
-      <main className="flex-1 flex flex-col p-[10px] w-full relative overflow-y-auto pb-12">
+      <main className="flex-1 flex flex-col px-6 py-4 w-full relative overflow-y-auto pb-12">
 
         {/* Header (scrolls with content) */}
         <div className="mb-6 flex-none">
 
-          {isArchiveMode ? (
-            <div className="mt-2 bg-red-100 border border-red-400 text-red-700 px-3 py-1.5 rounded-md w-full flex justify-between items-center shadow-sm">
-              <span className="font-bold">⚠️ YOU ARE IN ARCHIVE MODE. Viewing read-only data for AY {activeYear}.</span>
-              <button onClick={exitArchiveMode} className="bg-red-700 text-white px-3 py-1 rounded text-xs uppercase font-black hover:bg-red-800 transition">Return to Live</button>
+          {isArchiveMode && (
+            <div className="mt-4 mb-2 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex justify-between items-center">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <span className="text-amber-500">⚠</span>
+                Archive mode — viewing read-only data for A.Y. {activeYear}
+              </div>
+              <button onClick={exitArchiveMode} className="text-xs font-semibold bg-amber-600 text-white px-3 py-1.5 rounded-md hover:bg-amber-700 transition">
+                Return to Live
+              </button>
             </div>
-          ) : (
-            <p className="text-gray-600"></p>
           )}
         </div>
 
@@ -743,7 +771,7 @@ export default function Settings({ navigateToTab }) {
           {instituteModal.isOpen && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
               <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in duration-200">
-                <h3 className="font-bold text-base mb-4 text-[#376e35] flex items-center gap-2"><BookOpen size={20} /> {instituteModal.isEdit ? "Edit Institute" : "Add Institute"}</h3>
+                <h3 className="font-bold text-[16px] mb-4 text-[#376e35] flex items-center gap-2"><BookOpen size={20} /> {instituteModal.isEdit ? "Edit Institute" : "Add Institute"}</h3>
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Institute Name</label>
@@ -755,8 +783,8 @@ export default function Settings({ navigateToTab }) {
                   </div>
                 </div>
                 <div className="mt-6 flex justify-end gap-3 border-t pt-4">
-                  <button onClick={() => setInstituteModal({ isOpen: false, data: { name: "", abbreviation: "", address: "", openingDays: "", openingTime: "", closingTime: "", dailyLimit: "" }, isEdit: false })} className="px-4 py-2 text-gray-600 font-semibold hover:bg-gray-100 rounded-lg text-xs">Cancel</button>
-                  <button onClick={handleSaveInstitute} className="px-5 py-2 bg-[#376e35] text-white font-bold rounded-lg hover:bg-[#376e35] text-xs shadow-md">Save</button>
+                  <button onClick={() => setInstituteModal({ isOpen: false, data: { name: "", abbreviation: "", address: "", openingDays: "", openingTime: "", closingTime: "", dailyLimit: "" }, isEdit: false })} className="px-[14px] py-[6px] text-gray-600 font-semibold hover:bg-gray-100 rounded-lg text-[12px]">Cancel</button>
+                  <button onClick={handleSaveInstitute} className="px-[18px] py-[6px] bg-[#376e35] text-white font-bold rounded-lg hover:bg-[#376e35] text-[12px] shadow-md">Save</button>
                 </div>
               </div>
             </div>
@@ -765,7 +793,7 @@ export default function Settings({ navigateToTab }) {
           {courseModal.isOpen && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
               <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in duration-200">
-                <h3 className="font-bold text-base mb-4 text-[#376e35] flex items-center gap-2"><BookOpen size={20} /> {courseModal.isEdit ? "Edit Course" : "Add Course"}</h3>
+                <h3 className="font-bold text-[16px] mb-4 text-[#376e35] flex items-center gap-2"><BookOpen size={20} /> {courseModal.isEdit ? "Edit Course" : "Add Course"}</h3>
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Institute</label>
@@ -781,8 +809,8 @@ export default function Settings({ navigateToTab }) {
                   </div>
                 </div>
                 <div className="mt-6 flex justify-end gap-3 border-t pt-4">
-                  <button onClick={() => setCourseModal({ isOpen: false, data: { name: "", abbreviation: "", institute: "", limit: 0 }, isEdit: false })} className="px-4 py-2 text-gray-600 font-semibold hover:bg-gray-100 rounded-lg text-xs">Cancel</button>
-                  <button onClick={handleSaveCourse} disabled={isLoading} className={`px-5 py-2 text-white font-bold rounded-lg text-xs shadow-md transition-colors ${isLoading ? "bg-gray-400 cursor-not-allowed" : "bg-[#376e35] hover:bg-[#376e35]"}`}>
+                  <button onClick={() => setCourseModal({ isOpen: false, data: { name: "", abbreviation: "", institute: "", limit: 0 }, isEdit: false })} className="px-[14px] py-[6px] text-gray-600 font-semibold hover:bg-gray-100 rounded-lg text-[12px]">Cancel</button>
+                  <button onClick={handleSaveCourse} disabled={isLoading} className={`px-[18px] py-[6px] text-white font-bold rounded-lg text-[12px] shadow-md transition-colors ${isLoading ? "bg-gray-400 cursor-not-allowed" : "bg-[#376e35] hover:bg-[#376e35]"}`}>
                     {isLoading ? "Saving..." : "Save"}
                   </button>
                 </div>
@@ -795,9 +823,9 @@ export default function Settings({ navigateToTab }) {
               <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl animate-in fade-in zoom-in duration-200">
                 <div className="flex items-center gap-2 text-[#376e35] mb-2">
                   <History size={24} />
-                  <h3 className="font-bold text-base">Archive Data?</h3>
+                  <h3 className="font-bold text-[16px]">Archive Data?</h3>
                 </div>
-                <p className="text-gray-600 text-xs mb-2 leading-relaxed">
+                <p className="text-gray-600 text-[12px] mb-2 leading-relaxed">
                   {modals.restartMessage}
                 </p>
                 <div className="bg-green-50 p-3 rounded-lg mb-6 border border-green-100">
@@ -807,9 +835,9 @@ export default function Settings({ navigateToTab }) {
                   </p>
                 </div>
                 <div className="flex justify-end gap-3">
-                  <button onClick={() => setModals(prev => ({ ...prev, restart: false }))} className="px-4 py-2 text-gray-600 font-semibold hover:bg-gray-100 rounded-lg transition-colors text-xs">Cancel</button>
-                  <button onClick={handleConfirmRestart} className="px-4 py-2 bg-[#376e35] text-white font-bold rounded-lg hover:bg-[#376e35] transition-all text-xs flex items-center gap-2 shadow-lg shadow-green-100">
-                    <RefreshCw size={16} /> Confirm Archive
+                  <button onClick={() => setModals(prev => ({ ...prev, restart: false }))} className="px-[14px] py-[6px] text-gray-600 font-semibold hover:bg-gray-100 rounded-lg transition-colors text-[12px]">Cancel</button>
+                  <button onClick={handleConfirmRestart} className="px-[14px] py-[6px] bg-[#376e35] text-white font-bold rounded-lg hover:bg-[#376e35] transition-all text-[12px] flex items-center gap-2 shadow-lg shadow-green-100">
+                    <RefreshCw size={14} /> Confirm Archive
                   </button>
                 </div>
               </div>
@@ -821,9 +849,9 @@ export default function Settings({ navigateToTab }) {
               <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl animate-in fade-in zoom-in duration-200">
                 <div className="flex items-center gap-2 text-red-600 mb-2">
                   <AlertTriangle size={24} />
-                  <h3 className="font-bold text-base">System Reset Confirmation</h3>
+                  <h3 className="font-bold text-[16px]">System Reset Confirmation</h3>
                 </div>
-                <p className="text-gray-600 text-xs mb-4 leading-relaxed">
+                <p className="text-gray-600 text-[12px] mb-4 leading-relaxed">
                   Warning: <strong>All data will be archived in the database</strong>, and the active portal records will be completely <strong>wiped out/removed</strong>.
                 </p>
                 <div className="mb-6">
@@ -838,9 +866,9 @@ export default function Settings({ navigateToTab }) {
                   />
                 </div>
                 <div className="flex justify-end gap-3">
-                  <button onClick={() => setModals(prev => ({ ...prev, reset: false }))} className="px-4 py-2 text-gray-600 font-semibold hover:bg-gray-100 rounded-lg text-xs">Cancel</button>
-                  <button onClick={handleConfirmReset} disabled={modals.resetCode !== "RESET"} className={`px-4 py-2 text-white font-bold rounded-lg text-xs flex items-center gap-2 ${modals.resetCode === "RESET" ? "bg-red-600 hover:bg-red-700 shadow-lg shadow-red-200" : "bg-gray-300 cursor-not-allowed"}`}>
-                    <Trash2 size={16} /> Confirm Reset
+                  <button onClick={() => setModals(prev => ({ ...prev, reset: false }))} className="px-[14px] py-[6px] text-gray-600 font-semibold hover:bg-gray-100 rounded-lg text-[12px]">Cancel</button>
+                  <button onClick={handleConfirmReset} disabled={modals.resetCode !== "RESET"} className={`px-[14px] py-[6px] text-white font-bold rounded-lg text-[12px] flex items-center gap-2 ${modals.resetCode === "RESET" ? "bg-red-600 hover:bg-red-700 shadow-lg shadow-red-200" : "bg-gray-300 cursor-not-allowed"}`}>
+                    <Trash2 size={14} /> Confirm Reset
                   </button>
                 </div>
               </div>
@@ -852,20 +880,20 @@ export default function Settings({ navigateToTab }) {
               <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl animate-in fade-in zoom-in duration-200">
                 <div className={`flex items-center gap-2 mb-2 ${settings.admissionOpen ? "text-red-600" : "text-[#376e35]"}`}>
                   <AlertTriangle size={24} />
-                  <h3 className="font-bold text-base">
+                  <h3 className="font-bold text-[16px]">
                     {settings.admissionOpen ? "Close Admission Portal?" : "Open Admission Portal?"}
                   </h3>
                 </div>
-                <p className="text-gray-600 text-xs mb-6 leading-relaxed">
+                <p className="text-gray-600 text-[12px] mb-6 leading-relaxed">
                   Are you sure you want to <strong>{settings.admissionOpen ? "CLOSE" : "OPEN"}</strong> the admission portal?
                   {settings.admissionOpen
                     ? " Students will no longer be able to register. Logged-in students will be switched to Read-Only mode."
                     : " You must set an Academic Year and Deadline to begin accepting applications."}
                 </p>
                 <div className="flex justify-end gap-3">
-                  <button onClick={() => setModals(prev => ({ ...prev, toggleAdmission: false }))} className="px-4 py-2 text-gray-600 font-semibold hover:bg-gray-100 rounded-lg text-xs">Cancel</button>
-                  <button onClick={confirmToggleAdmission} className={`px-4 py-2 text-white font-bold rounded-lg text-xs flex items-center gap-2 shadow-lg ${settings.admissionOpen ? 'bg-red-600 hover:bg-red-700' : 'bg-[#376e35] hover:bg-[#376e35]'}`}>
-                    <CheckCircle size={16} /> Confirm
+                  <button onClick={() => setModals(prev => ({ ...prev, toggleAdmission: false }))} className="px-[14px] py-[6px] text-gray-600 font-semibold hover:bg-gray-100 rounded-lg text-[12px]">Cancel</button>
+                  <button onClick={confirmToggleAdmission} className={`px-[14px] py-[6px] text-white font-bold rounded-lg text-[12px] flex items-center gap-2 shadow-lg ${settings.admissionOpen ? 'bg-red-600 hover:bg-red-700' : 'bg-[#376e35] hover:bg-[#376e35]'}`}>
+                    <CheckCircle size={14} /> Confirm
                   </button>
                 </div>
               </div>
@@ -877,15 +905,15 @@ export default function Settings({ navigateToTab }) {
               <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl animate-in fade-in zoom-in duration-200">
                 <div className="flex items-center gap-2 text-[#376e35] mb-2">
                   <Save size={24} />
-                  <h3 className="font-bold text-base">Save Changes?</h3>
+                  <h3 className="font-bold text-[16px]">Save Changes?</h3>
                 </div>
-                <p className="text-gray-600 text-xs mb-6 leading-relaxed">
+                <p className="text-gray-600 text-[12px] mb-6 leading-relaxed">
                   Are you sure you want to save? The portal will be set to <strong>{settings.admissionOpen ? "OPEN" : "CLOSED"}</strong>. {settings.admissionOpen && "The Academic Year dropdown will be locked to prevent accidental changes."}
                 </p>
                 <div className="flex justify-end gap-3">
-                  <button onClick={() => setModals(prev => ({ ...prev, saveAdmission: false }))} className="px-4 py-2 text-gray-600 font-semibold hover:bg-gray-100 rounded-lg text-xs">Cancel</button>
-                  <button onClick={handleConfirmSaveAdmission} className="px-4 py-2 bg-[#376e35] text-white font-bold rounded-lg hover:bg-[#376e35] text-xs flex items-center gap-2 shadow-lg">
-                    <CheckCircle size={16} /> Confirm Save
+                  <button onClick={() => setModals(prev => ({ ...prev, saveAdmission: false }))} className="px-[14px] py-[6px] text-gray-600 font-semibold hover:bg-gray-100 rounded-lg text-[12px]">Cancel</button>
+                  <button onClick={handleConfirmSaveAdmission} className="px-[14px] py-[6px] bg-[#376e35] text-white font-bold rounded-lg hover:bg-[#376e35] text-[12px] flex items-center gap-2 shadow-lg">
+                    <CheckCircle size={14} /> Confirm Save
                   </button>
                 </div>
               </div>
@@ -895,7 +923,7 @@ export default function Settings({ navigateToTab }) {
           {editAdminModal.isOpen && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
               <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in duration-200">
-                <h3 className="font-bold text-base mb-4 text-[#376e35] flex items-center gap-2"><Edit3 size={20} /> Edit Administrator</h3>
+                <h3 className="font-bold text-[16px] mb-4 text-[#376e35] flex items-center gap-2"><Edit3 size={20} /> Edit Administrator</h3>
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Username</label>
@@ -930,8 +958,8 @@ export default function Settings({ navigateToTab }) {
                   </div>
                 </div>
                 <div className="mt-6 flex justify-end gap-3 border-t pt-4">
-                  <button onClick={() => setEditAdminModal({ isOpen: false, admin: null })} className="px-4 py-2 text-gray-600 font-semibold hover:bg-gray-100 rounded-lg text-xs">Cancel</button>
-                  <button onClick={handleUpdateAdmin} className="px-5 py-2 bg-[#376e35] text-white font-bold rounded-lg hover:bg-[#376e35] text-xs shadow-md">Save Changes</button>
+                  <button onClick={() => setEditAdminModal({ isOpen: false, admin: null })} className="px-[14px] py-[6px] text-gray-600 font-semibold hover:bg-gray-100 rounded-lg text-[12px]">Cancel</button>
+                  <button onClick={handleUpdateAdmin} className="px-[18px] py-[6px] bg-[#376e35] text-white font-bold rounded-lg hover:bg-[#376e35] text-[12px] shadow-md">Save Changes</button>
                 </div>
               </div>
             </div>
@@ -945,9 +973,9 @@ export default function Settings({ navigateToTab }) {
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex-1 py-2 px-2 sm:px-4 text-center font-bold text-xs sm:text-xs md:text-base whitespace-nowrap ${activeTab === tab.key
+                  className={`flex-1 py-2 px-2 sm:px-4 text-center font-bold text-xs sm:text-[12px] md:text-[15px] whitespace-nowrap ${activeTab === tab.key
                     ? "bg-[#376e35] text-white"
-                    : "bg-white text-black hover:bg-[#fafdfa] " + (idx > 0 ? "border-l border-gray-400" : "")
+                    : "bg-white text-black hover:bg-gray-50 " + (idx > 0 ? "border-l border-gray-400" : "")
                     }`}
                 >
                   {tab.label}
@@ -966,7 +994,7 @@ export default function Settings({ navigateToTab }) {
                   {/* TOP ROW: ADMISSION STATUS */}
                   <div className="bg-white border border-gray-200 rounded-2xl p-6 lg:p-8 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-lg lg:text-xl font-bold text-black flex items-center gap-3">
+                      <h2 className="text-xl lg:text-2xl font-bold text-black flex items-center gap-3">
                         <Activity className="text-[#376e35]" size={28} /> Admission Status & Academic Year
                       </h2>
                     </div>
@@ -977,26 +1005,24 @@ export default function Settings({ navigateToTab }) {
                       {/* Status Toggle */}
                       <div className={`rounded-xl p-8 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-sm border ${settings.admissionOpen ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
                         <div className="text-center sm:text-left">
-                          <h3 className="font-bold text-xl text-black">Admission Portal</h3>
+                          <h3 className="font-bold text-2xl text-black">Admission Portal</h3>
                           <p className="text-gray-700">Currently <strong className={settings.admissionOpen ? "text-[#376e35]" : "text-red-600"}>{settings.admissionOpen ? "OPEN" : "CLOSED"}</strong> for new applicants.</p>
                         </div>
 
                         <button
                           onClick={handleToggleAdmissionClick}
                           disabled={isArchiveMode || !canEditAdmission}
-                          className={`relative w-20 h-10 shrink-0 rounded-full focus:outline-none shadow-inner ${(isArchiveMode || !canEditAdmission) ? 'bg-gray-300 cursor-not-allowed opacity-80' : (settings.admissionOpen ? 'bg-[#376e35]' : 'bg-gray-400')
+                          className={`relative w-14 h-7 shrink-0 rounded-full focus:outline-none transition-colors duration-300 ${(isArchiveMode || !canEditAdmission) ? 'bg-gray-300 cursor-not-allowed opacity-80' : (settings.admissionOpen ? 'bg-[#376e35]' : 'bg-gray-300')
                             }`}
                         >
-                          <span className={`absolute top-1 left-1 bg-white w-8 h-8 rounded-full shadow-md transform flex items-center justify-center transition-transform ${settings.admissionOpen ? 'translate-x-10' : 'translate-x-0'}`}>
-                            <div className={`w-2 h-2 rounded-full ${settings.admissionOpen ? 'bg-green-500' : 'bg-gray-300'}`} />
-                          </span>
+                          <span className={`absolute top-0.5 left-0.5 bg-white w-6 h-6 rounded-full shadow transition-transform duration-300 ${settings.admissionOpen ? 'translate-x-7' : 'translate-x-0'}`} />
                         </button>
                       </div>
 
                       {/* Academic Year & Deadline */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 p-6 rounded-xl border border-gray-200">
                         <div className="space-y-2">
-                          <label className={`font-bold text-base flex items-center gap-2 ${!settings.admissionOpen || isArchiveMode || !canEditAdmission || !!dbSchoolYear ? 'text-gray-400' : 'text-black'}`}>
+                          <label className={`font-bold text-[16px] flex items-center gap-2 ${!settings.admissionOpen || isArchiveMode || !canEditAdmission || !!dbSchoolYear ? 'text-gray-400' : 'text-black'}`}>
                             <CalendarIcon size={18} /> Current Academic Year {(!settings.admissionOpen && !isArchiveMode) && ""}
                           </label>
                           <div className="relative">
@@ -1026,7 +1052,7 @@ export default function Settings({ navigateToTab }) {
                         </div>
 
                         <div className="space-y-2">
-                          <label className={`font-bold text-base flex items-center gap-2 ${!settings.admissionOpen || isArchiveMode || !canEditAdmission ? 'text-gray-400' : 'text-black'}`}>
+                          <label className={`font-bold text-[16px] flex items-center gap-2 ${!settings.admissionOpen || isArchiveMode || !canEditAdmission ? 'text-gray-400' : 'text-black'}`}>
                             <Clock size={18} /> Application Deadline {(!settings.admissionOpen && !isArchiveMode) && ""}
                           </label>
                           <CustomDateTimePicker
@@ -1056,18 +1082,18 @@ export default function Settings({ navigateToTab }) {
                   {/* BOTTOM ROW: SYSTEM PROFILE */}
                   <div className="bg-white border border-gray-200 rounded-2xl p-6 lg:p-8 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-lg lg:text-xl font-bold text-black flex items-center gap-3">
+                      <h2 className="text-xl lg:text-2xl font-bold text-black flex items-center gap-3">
                         <UserCog className="text-[#376e35]" size={28} /> System Profile
                       </h2>
                       {!isArchiveMode && (
                         <button
                           onClick={() => setIsEditingProfile(!isEditingProfile)}
                           disabled={!canEditProfile}
-                          className={`flex items-center gap-2 font-bold py-2 px-5 text-xs rounded shadow transition-colors ${!canEditProfile ? "bg-gray-300 text-gray-500 cursor-not-allowed" :
+                          className={`flex items-center gap-2 font-bold py-2 px-5 text-[12px] rounded shadow transition-colors ${!canEditProfile ? "bg-gray-300 text-gray-500 cursor-not-allowed" :
                             isEditingProfile ? "bg-gray-600 hover:bg-gray-700 text-white" : "bg-[#376e35] hover:bg-[#376e35] text-white"
                             }`}
                         >
-                          {isEditingProfile ? "Cancel Editing" : <><Edit3 size={16} /> Edit Profile</>}
+                          {isEditingProfile ? "Cancel Editing" : <><Edit3 size={14} /> Edit Profile</>}
                         </button>
                       )}
                     </div>
@@ -1098,27 +1124,15 @@ export default function Settings({ navigateToTab }) {
                         />
                       </InputGroup>
 
-                      <InputGroup label="Contact No.">
-                        <input
-                          type="text"
-                          name="contactInfo"
-                          value={settings.contactInfo || ""}
-                          onChange={handleChange}
-                          disabled={!isEditingProfile || isArchiveMode || !canEditProfile}
-                          className={`w-full border rounded-lg px-4 py-3 outline-none ${isEditingProfile && !isArchiveMode && canEditProfile ? "border-gray-500 bg-white focus:ring-2 focus:ring-gray-200" : "border-gray-300 bg-gray-50 text-gray-600 cursor-not-allowed opacity-80"
-                            }`}
-                        />
-                      </InputGroup>
-
                       <InputGroup label="Email Address">
                         <input
                           type="text"
                           name="email"
-                          value={settings.email || ""}
-                          onChange={handleChange}
-                          disabled={!isEditingProfile || isArchiveMode || !canEditProfile}
-                          className={`w-full border rounded-lg px-4 py-3 outline-none ${isEditingProfile && !isArchiveMode && canEditProfile ? "border-gray-500 bg-white focus:ring-2 focus:ring-gray-200" : "border-gray-300 bg-gray-50 text-gray-600 cursor-not-allowed opacity-80"
-                            }`}
+                          value={systemAdminEmail || ""}
+                          readOnly
+                          disabled={true}
+                          className="w-full border rounded-lg px-4 py-3 outline-none border-gray-300 bg-gray-50 text-gray-600 cursor-not-allowed opacity-80"
+                          title="Fetched automatically from your administrator account"
                         />
                       </InputGroup>
 
@@ -1143,16 +1157,16 @@ export default function Settings({ navigateToTab }) {
                 <div className="space-y-8">
                   <div className="bg-white border border-gray-200 rounded-2xl p-6 lg:p-8 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-lg lg:text-xl font-bold text-black flex items-center gap-3">
+                      <h2 className="text-xl lg:text-2xl font-bold text-black flex items-center gap-3">
                         <BookOpen className="text-[#376e35]" size={28} /> Institute Profile
                       </h2>
                       {!isArchiveMode && (
                         <button
                           onClick={() => setIsEditingProfile(!isEditingProfile)}
-                          className={`flex items-center gap-2 font-bold py-2 px-5 text-xs rounded shadow transition-colors ${isEditingProfile ? "bg-gray-600 hover:bg-gray-700 text-white" : "bg-[#376e35] hover:bg-[#376e35] text-white"
+                          className={`flex items-center gap-2 font-bold py-2 px-5 text-[12px] rounded shadow transition-colors ${isEditingProfile ? "bg-gray-600 hover:bg-gray-700 text-white" : "bg-[#376e35] hover:bg-[#376e35] text-white"
                             }`}
                         >
-                          {isEditingProfile ? "Cancel Editing" : <><Edit3 size={16} /> Edit Profile</>}
+                          {isEditingProfile ? "Cancel Editing" : <><Edit3 size={14} /> Edit Profile</>}
                         </button>
                       )}
                     </div>
@@ -1255,15 +1269,15 @@ export default function Settings({ navigateToTab }) {
                   {/* ADMIN GENERAL SETTINGS: COURSES OFFERED SECTION */}
                   <div className="bg-white border border-gray-200 rounded-2xl p-6 lg:p-8 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-lg lg:text-xl font-bold text-black flex items-center gap-3">
+                      <h2 className="text-xl lg:text-2xl font-bold text-black flex items-center gap-3">
                         <BookOpen className="text-[#376e35]" size={28} /> Courses Offered
                       </h2>
                       {!isArchiveMode && (
                         <button
                           onClick={() => setCourseModal({ isOpen: true, data: { name: "", abbreviation: "", institute: myInstitute.abbreviation, limit: 0 }, isEdit: false })}
-                          className="flex items-center gap-2 font-bold py-2 px-5 text-xs rounded shadow transition-colors bg-[#376e35] hover:bg-[#376e35] text-white"
+                          className="flex items-center gap-2 font-bold py-2 px-5 text-[12px] rounded shadow transition-colors bg-[#376e35] hover:bg-[#376e35] text-white"
                         >
-                          <Plus size={16} /> Add Course
+                          <Plus size={14} /> Add Course
                         </button>
                       )}
                     </div>
@@ -1272,24 +1286,24 @@ export default function Settings({ navigateToTab }) {
                     <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
                       <table className="w-full text-left border-collapse">
                         <thead className="bg-gray-100 shadow-sm">
-                          <tr className="text-gray-700 text-xs uppercase tracking-wide">
-                            <th className="px-4 py-2 font-bold border-b">Abbreviation</th>
-                            <th className="px-4 py-2 font-bold border-b">Course Name</th>
-                            <th className="px-4 py-2 font-bold border-b text-center">Action</th>
+                          <tr className="text-gray-700 text-[12px] uppercase tracking-wide">
+                            <th className="px-[14px] py-[6px] font-bold border-b">Abbreviation</th>
+                            <th className="px-[14px] py-[6px] font-bold border-b">Course Name</th>
+                            <th className="px-[14px] py-[6px] font-bold border-b text-center">Action</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white">
                           {courses.filter(c => c.institute === myInstitute.abbreviation).length > 0 ? (
                             courses.filter(c => c.institute === myInstitute.abbreviation).map(c => (
-                              <tr key={c._id} className="hover:bg-[#fafdfa] border-b border-gray-100">
-                                <td className="px-4 py-2 text-xs font-bold text-gray-800">{c.abbreviation}</td>
-                                <td className="px-4 py-2 text-xs uppercase font-medium">{c.name}</td>
-                                <td className="px-4 py-2 flex justify-center gap-2">
+                              <tr key={c._id} className="hover:bg-gray-50 border-b border-gray-100">
+                                <td className="px-[14px] py-[6px] text-[12px] font-bold text-gray-800">{c.abbreviation}</td>
+                                <td className="px-[14px] py-[6px] text-[12px] uppercase font-medium">{c.name}</td>
+                                <td className="px-[14px] py-[6px] flex justify-center gap-2">
                                   <button onClick={() => setCourseModal({ isOpen: true, data: c, isEdit: true })} className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded transition shadow-sm">
-                                    <Edit3 size={16} />
+                                    <Edit3 size={14} />
                                   </button>
                                   <button onClick={() => handleDeleteCourse(c._id, c.name)} className="p-2 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded transition shadow-sm">
-                                    <Trash2 size={16} />
+                                    <Trash2 size={14} />
                                   </button>
                                 </td>
                               </tr>
@@ -1312,7 +1326,7 @@ export default function Settings({ navigateToTab }) {
           {activeTab === "admin" && (
             <div className="space-y-8 animate-fade-in">
               <div>
-                <h2 className="text-lg font-bold text-black mb-1 flex items-center gap-2">
+                <h2 className="text-xl font-bold text-black mb-1 flex items-center gap-2">
                   <UserPlus className="text-[#376e35]" size={24} /> Manage Administrators
                 </h2>
                 <hr className="border-gray-300 mb-6 mt-2" />
@@ -1321,7 +1335,7 @@ export default function Settings({ navigateToTab }) {
 
                   {/* LEFT COLUMN: CREATE ADMIN ACCOUNT */}
                   <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 sm:p-8 xl:col-span-4">
-                    <h3 className="text-base font-bold text-black mb-1 flex items-center gap-2">
+                    <h3 className="text-[16px] font-bold text-black mb-1 flex items-center gap-2">
                       Create Admin Account
                     </h3>
 
@@ -1333,7 +1347,7 @@ export default function Settings({ navigateToTab }) {
                           value={adminRole}
                           onChange={(e) => setAdminRole(e.target.value)}
                           disabled={isArchiveMode || !canManageAdmins}
-                          className={`w-full border rounded-xl px-4 py-2.5 text-xs focus:outline-none transition-all font-medium ${isArchiveMode || !canManageAdmins ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-80' : 'bg-gray-50 border-gray-300 text-gray-700 focus:ring-2 focus:ring-[#376e35] focus:border-[#376e35]'}`}
+                          className={`w-full border rounded-xl px-[14px] py-[7px] text-[12px] focus:outline-none transition-all font-medium ${isArchiveMode || !canManageAdmins ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-80' : 'bg-gray-50 border-gray-300 text-gray-700 focus:ring-2 focus:ring-[#376e35] focus:border-[#376e35]'}`}
                         >
                           <option value="Admin">Standard Admin</option>
                           <option value="SuperAdmin">Super Admin</option>
@@ -1348,7 +1362,7 @@ export default function Settings({ navigateToTab }) {
                           onChange={(e) => setAdminUsername(e.target.value)}
                           required
                           disabled={isArchiveMode || !canManageAdmins}
-                          className={`w-full border rounded-xl px-4 py-2.5 text-xs focus:outline-none transition-all ${isArchiveMode || !canManageAdmins ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-80' : 'bg-gray-50 border-gray-300 placeholder-gray-400 focus:ring-2 focus:ring-[#376e35] focus:border-[#376e35]'}`}
+                          className={`w-full border rounded-xl px-[14px] py-[6px] text-[12px] focus:outline-none transition-all ${isArchiveMode || !canManageAdmins ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-80' : 'bg-gray-50 border-gray-300 placeholder-gray-400 focus:ring-2 focus:ring-[#376e35] focus:border-[#376e35]'}`}
                         />
                       </div>
 
@@ -1360,7 +1374,7 @@ export default function Settings({ navigateToTab }) {
                           onChange={(e) => setAdminEmail(e.target.value)}
                           required
                           disabled={isArchiveMode || !canManageAdmins}
-                          className={`w-full border rounded-xl px-4 py-2.5 text-xs focus:outline-none transition-all ${isArchiveMode || !canManageAdmins ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-80' : 'bg-gray-50 border-gray-300 placeholder-gray-400 focus:ring-2 focus:ring-[#376e35] focus:border-[#376e35]'}`}
+                          className={`w-full border rounded-xl px-[14px] py-[6px] text-[12px] focus:outline-none transition-all ${isArchiveMode || !canManageAdmins ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-80' : 'bg-gray-50 border-gray-300 placeholder-gray-400 focus:ring-2 focus:ring-[#376e35] focus:border-[#376e35]'}`}
                         />
                       </div>
 
@@ -1373,7 +1387,7 @@ export default function Settings({ navigateToTab }) {
                             onChange={(e) => setAdminPassword(e.target.value)}
                             required
                             disabled={isArchiveMode || !canManageAdmins}
-                            className={`w-full border rounded-xl px-4 py-2.5 pr-10 text-xs focus:outline-none transition-all ${isArchiveMode || !canManageAdmins ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-80' : 'bg-gray-50 border-gray-300 placeholder-gray-400 focus:ring-2 focus:ring-[#376e35] focus:border-[#376e35]'}`}
+                            className={`w-full border rounded-xl px-[14px] py-[6px] pr-10 text-[12px] focus:outline-none transition-all ${isArchiveMode || !canManageAdmins ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-80' : 'bg-gray-50 border-gray-300 placeholder-gray-400 focus:ring-2 focus:ring-[#376e35] focus:border-[#376e35]'}`}
                           />
                           <button
                             type="button"
@@ -1394,7 +1408,7 @@ export default function Settings({ navigateToTab }) {
                             onChange={(e) => setAdminConfirmPassword(e.target.value)}
                             required
                             disabled={isArchiveMode || !canManageAdmins}
-                            className={`w-full border rounded-xl px-4 py-2.5 pr-10 text-xs focus:outline-none transition-all ${isArchiveMode || !canManageAdmins ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-80' : 'bg-gray-50 border-gray-300 placeholder-gray-400 focus:ring-2 focus:ring-[#376e35] focus:border-[#376e35]'}`}
+                            className={`w-full border rounded-xl px-[14px] py-[6px] pr-10 text-[12px] focus:outline-none transition-all ${isArchiveMode || !canManageAdmins ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-80' : 'bg-gray-50 border-gray-300 placeholder-gray-400 focus:ring-2 focus:ring-[#376e35] focus:border-[#376e35]'}`}
                           />
                           <button
                             type="button"
@@ -1411,7 +1425,7 @@ export default function Settings({ navigateToTab }) {
                           <button
                             type="submit"
                             disabled={isLoading || !canManageAdmins}
-                            className={`w-full py-3 rounded-xl font-bold text-xs shadow-md uppercase tracking-wider transition-colors ${isLoading || !canManageAdmins ? 'bg-gray-400 text-gray-200 cursor-not-allowed opacity-80' : 'bg-[#376e35] text-white hover:bg-green-800'
+                            className={`w-full py-3 rounded-xl font-bold text-[12px] shadow-md uppercase tracking-wider transition-colors ${isLoading || !canManageAdmins ? 'bg-gray-400 text-gray-200 cursor-not-allowed opacity-80' : 'bg-[#376e35] text-white hover:bg-green-800'
                               }`}
                           >
                             {isLoading ? "Creating..." : "Create Account"}
@@ -1425,7 +1439,7 @@ export default function Settings({ navigateToTab }) {
                   <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 sm:p-8 flex flex-col h-full xl:col-span-8">
                     <div className="flex justify-between items-center mb-6">
                       <div>
-                        <h3 className="font-bold text-base text-black flex items-center gap-2">
+                        <h3 className="font-bold text-[16px] text-black flex items-center gap-2">
                           <UserCog className="text-[#376e35]" size={20} /> Admin Accounts
                         </h3>
                       </div>
@@ -1450,10 +1464,10 @@ export default function Settings({ navigateToTab }) {
                         </thead>
                         <tbody className="bg-white">
                           {adminList.length > 0 ? adminList.map(admin => (
-                            <tr key={admin._id} className="hover:bg-[#fafdfa] border-b border-gray-100 transition-colors">
-                              <td className="p-5 text-xs font-bold text-gray-800 text-left">{admin.username || "N/A"}</td>
-                              <td className="p-5 text-xs text-gray-600 text-left">{admin.email}</td>
-                              <td className="p-5 text-xs text-gray-600 text-center">
+                            <tr key={admin._id} className="hover:bg-gray-50 border-b border-gray-100 transition-colors">
+                              <td className="p-5 text-[12px] font-bold text-gray-800 text-left">{admin.username || "N/A"}</td>
+                              <td className="p-5 text-[12px] text-gray-600 text-left">{admin.email}</td>
+                              <td className="p-5 text-[12px] text-gray-600 text-center">
                                 {admin.role === "SuperAdmin" ? "Super Admin" : "Admin"}
                               </td>
                               <td className="p-5 text-center">
@@ -1495,7 +1509,7 @@ export default function Settings({ navigateToTab }) {
           {activeTab === "notification" && (
             <div className="space-y-8 animate-fade-in">
               <div>
-                <h2 className="text-lg font-bold text-black mb-1 flex items-center gap-2">
+                <h2 className="text-xl font-bold text-black mb-1 flex items-center gap-2">
                   <Bell className="text-[#376e35]" size={24} /> Notification Preferences
                 </h2>
                 <hr className="border-gray-300 mb-6 mt-2" />
@@ -1570,45 +1584,33 @@ export default function Settings({ navigateToTab }) {
             <div className="space-y-8 animate-fade-in">
               <div>
                 <h2 className="text-xl font-bold text-black mb-1 flex items-center gap-2">
-                  <Shield className="text-[#376e35]" size={24}/> Security Settings
+                  <Shield className="text-[#376e35]" size={24} /> Security Settings
                 </h2>
                 <hr className="border-gray-300 mb-6 mt-2" />
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center bg-gray-50 p-6 rounded-xl border border-gray-200">
-                    <div>
-                      <h3 className="font-bold text-[16px] text-gray-800">Two-Factor Authentication (2FA)</h3>
-                      <p className="text-[12px] text-gray-600 mt-1">Require verification code for Admin login.</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-[12px] font-bold ${securitySettings.twoFactorAuth ? "text-[#376e35]" : "text-gray-500"}`}>{securitySettings.twoFactorAuth ? "ENABLED" : "DISABLED"}</span>
-                      <ToggleSwitch disabled={isArchiveMode || currentUserRole !== "SuperAdmin"} checked={securitySettings.twoFactorAuth} onChange={() => handleToggleSecurity('twoFactorAuth')} />
-                    </div>
-                  </div>
+                <div className="flex justify-between items-center bg-gray-50 p-6 rounded-xl border border-gray-200">
+                  <div>
+                    <h3 className="font-bold text-[16px] text-gray-800">Two-Factor Authentication (2FA)</h3>
 
-                  <div className="flex justify-between items-center bg-gray-50 p-6 rounded-xl border border-gray-200">
-                    <div>
-                      <h3 className="font-bold text-[16px] text-gray-800">Applicant Email Authentication</h3>
-                      <p className="text-[12px] text-gray-600 mt-1">Require OTP verification for new applicant registration.</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-[12px] font-bold ${securitySettings.applicantEmailAuth ? "text-[#376e35]" : "text-gray-500"}`}>{securitySettings.applicantEmailAuth ? "ENABLED" : "DISABLED"}</span>
-                      <ToggleSwitch disabled={isArchiveMode || currentUserRole !== "SuperAdmin"} checked={securitySettings.applicantEmailAuth ?? true} onChange={() => handleToggleSecurity('applicantEmailAuth')} />
-                    </div>
+                    <p className="text-[12px] text-gray-600 mt-1">Require verification code for Admin login.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-[12px] font-bold ${securitySettings.twoFactorAuth ? "text-[#376e35]" : "text-gray-500"}`}>{securitySettings.twoFactorAuth ? "ENABLED" : "DISABLED"}</span>
+                    <ToggleSwitch disabled={isArchiveMode || currentUserRole !== "SuperAdmin"} checked={securitySettings.twoFactorAuth} onChange={handleToggle2FA} />
                   </div>
                 </div>
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <h2 className="text-lg font-bold text-black flex items-center gap-2">
+                  <h2 className="text-xl font-bold text-black flex items-center gap-2">
                     <Activity className="text-[#376e35]" size={24} /> Activity Logs
                   </h2>
                   {activityLogs.length > 0 && !isArchiveMode && canManageAdmins && (
                     <button
                       onClick={handleClearLogs}
-                      className="text-red-500 hover:text-red-700 text-xs font-bold flex items-center gap-1 hover:bg-red-50 px-3 py-1 rounded transition-colors"
+                      className="text-red-500 hover:text-red-700 text-[12px] font-bold flex items-center gap-1 hover:bg-red-50 px-3 py-1 rounded transition-colors"
                     >
-                      <Trash2 size={16} /> Clear All
+                      <Trash2 size={14} /> Clear All
                     </button>
                   )}
                 </div>
@@ -1627,8 +1629,8 @@ export default function Settings({ navigateToTab }) {
                     <tbody className="bg-white">
                       {activityLogs.length > 0 ? (
                         activityLogs.map((log) => (
-                          <tr key={log._id || log.id} className="hover:bg-[#fafdfa] border-b border-gray-100 last:border-0 transition-colors">
-                            <td className="p-5 text-gray-800 font-bold text-xs text-left flex items-center gap-2">
+                          <tr key={log._id || log.id} className="hover:bg-gray-50 border-b border-gray-100 last:border-0 transition-colors">
+                            <td className="p-5 text-gray-800 font-bold text-[12px] text-left flex items-center gap-2">
                               <div className="bg-gray-200 p-1.5 rounded-full"><User size={14} /></div>
                               {log.user || "System"}
                             </td>
@@ -1640,7 +1642,7 @@ export default function Settings({ navigateToTab }) {
                                 return log.role || "System";
                               })()}
                             </td>
-                            <td className="p-5 text-gray-800 text-xs text-left">{log.action}</td>
+                            <td className="p-5 text-gray-800 text-[12px] text-left">{log.action}</td>
                             <td className="p-5 text-gray-500 text-xs text-center">{new Date(log.timestamp).toLocaleString()}</td>
                             <td className="p-5 text-center">
                               <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${log.status === 'Success' ? 'bg-green-100 text-[#376e35]' : 'bg-red-100 text-red-700'}`}>
@@ -1667,7 +1669,7 @@ export default function Settings({ navigateToTab }) {
           {activeTab === "maintenance" && (
             <div className="space-y-8 animate-fade-in">
               <div>
-                <h2 className="text-lg font-bold text-black mb-1 flex items-center gap-2">
+                <h2 className="text-xl font-bold text-black mb-1 flex items-center gap-2">
                   <Wrench className="text-[#376e35]" size={24} />System Maintenance</h2>
                 <hr className="border-gray-300 my-4" />
 
@@ -1676,8 +1678,8 @@ export default function Settings({ navigateToTab }) {
                   {/* Archived Data */}
                   <div className={`border border-green-200 rounded-xl p-6 relative overflow-hidden group ${isArchiveMode || !canEditMaintenance ? 'bg-gray-50 opacity-60 pointer-events-none' : 'bg-white hover:shadow-lg transition-shadow'}`}>
                     <div className="w-12 h-12 bg-green-50  rounded-full flex items-center justify-center mb-4 text-[#376e35] z-10 relative"><Database size={24} /></div>
-                    <h3 className="font-bold text-base text-[#376e35] mb-2 relative z-10">Archive Data</h3>
-                    <p className="text-xs text-gray-600 mb-4 relative z-10">Select an Academic Year to switch to past academic year's admission records. </p>
+                    <h3 className="font-bold text-[16px] text-[#376e35] mb-2 relative z-10">Archive Data</h3>
+                    <p className="text-[12px] text-gray-600 mb-4 relative z-10">Select an Academic Year to switch to past academic year's admission records. </p>
 
                     <div className="relative z-10 space-y-3">
                       <div className="relative">
@@ -1708,8 +1710,8 @@ export default function Settings({ navigateToTab }) {
                   {/* Pre-Admission Reset Card */}
                   <div className={`border border-red-200 rounded-xl p-6 relative overflow-hidden ${isArchiveMode || !canEditMaintenance ? 'bg-gray-50 opacity-60 pointer-events-none' : 'bg-red-50 hover:shadow-lg transition-shadow'}`}>
                     <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4 text-red-600"><Archive size={24} /></div>
-                    <h3 className="font-bold text-base text-red-800 mb-2">Pre-Admission Reset</h3>
-                    <p className="text-xs text-red-700/80 mb-6 h-10">All data will be archived in the database and active records will be wiped out/removed.</p>
+                    <h3 className="font-bold text-[16px] text-red-800 mb-2">Pre-Admission Reset</h3>
+                    <p className="text-[12px] text-red-700/80 mb-6 h-[36px]">All data will be archived in the database and active records will be wiped out/removed.</p>
 
                     <button
                       onClick={handleInitiateReset}
@@ -1737,7 +1739,7 @@ export default function Settings({ navigateToTab }) {
 function InputGroup({ label, icon, children }) {
   return (
     <div className="space-y-2">
-      <label className="flex items-center gap-2 font-bold text-gray-800 text-base">
+      <label className="flex items-center gap-2 font-bold text-gray-800 text-[15px]">
         {icon} {label}
       </label>
       {children}
@@ -1907,7 +1909,7 @@ const CustomDateTimePicker = ({ value, onChange, disabled, placeholder = "Select
           type="button"
           onClick={(e) => { e.preventDefault(); if (!isPast) handleDateClick(i); }}
           disabled={isPast}
-          className={`h-8 w-8 rounded-full flex items-center justify-center text-xs transition-colors
+          className={`h-8 w-8 rounded-full flex items-center justify-center text-[12px] transition-colors
             ${isPast ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-green-100 text-gray-700'}
             ${isSelected ? 'bg-[#376e35] text-white font-bold hover:bg-green-800' : ''}
             ${isToday && !isSelected && !isPast ? 'border border-[#376e35] font-bold text-[#376e35]' : ''}
@@ -1937,7 +1939,7 @@ const CustomDateTimePicker = ({ value, onChange, disabled, placeholder = "Select
         <span className={`text-md truncate pl-2 ${disabled ? "text-gray-500" : "text-black font-medium"}`}>
           {value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : placeholder}
         </span>
-        <CalendarIcon size={16} className={disabled ? "text-gray-400" : "text-[#376e35]"} />
+        <CalendarIcon size={14} className={disabled ? "text-gray-400" : "text-[#376e35]"} />
       </div>
 
       {isOpen && !disabled && (
@@ -1948,14 +1950,14 @@ const CustomDateTimePicker = ({ value, onChange, disabled, placeholder = "Select
               <select
                 value={viewDate.getMonth()}
                 onChange={handleMonthChange}
-                className="bg-transparent font-bold text-xs text-gray-800 outline-none cursor-pointer hover:text-[#376e35] transition-colors"
+                className="bg-transparent font-bold text-[12px] text-gray-800 outline-none cursor-pointer hover:text-[#376e35] transition-colors"
               >
                 {monthNames.map((m, idx) => <option key={idx} value={idx}>{m}</option>)}
               </select>
               <select
                 value={viewDate.getFullYear()}
                 onChange={handleYearChange}
-                className="bg-transparent font-bold text-xs text-gray-800 outline-none cursor-pointer hover:text-[#376e35] transition-colors"
+                className="bg-transparent font-bold text-[12px] text-gray-800 outline-none cursor-pointer hover:text-[#376e35] transition-colors"
               >
                 {years.map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
@@ -1977,7 +1979,7 @@ const CustomDateTimePicker = ({ value, onChange, disabled, placeholder = "Select
             <button
               type="button"
               onClick={() => setShowTimeMenu(!showTimeMenu)}
-              className="bg-gray-50 border border-green-300 text-[#376e35] text-xs rounded-lg outline-none px-3 py-2 font-bold shadow-sm hover:bg-green-100 transition-colors"
+              className="bg-gray-50 border border-green-300 text-[#376e35] text-[12px] rounded-lg outline-none px-3 py-2 font-bold shadow-sm hover:bg-green-100 transition-colors"
             >
               {h12Str}:{mStr} {ampm} <Clock size={12} className="inline ml-1 mb-0.5" />
             </button>
@@ -1991,7 +1993,7 @@ const CustomDateTimePicker = ({ value, onChange, disabled, placeholder = "Select
                     <div
                       key={h} id={`menu-hour-${h}`}
                       onClick={() => handleTimeSelect('hour', h)}
-                      className={`cursor-pointer text-xs text-center py-1.5 rounded transition-colors ${h12Str === h ? 'bg-[#376e35] text-white font-bold shadow-md' : 'hover:bg-green-50 text-gray-700'}`}
+                      className={`cursor-pointer text-[12px] text-center py-1.5 rounded transition-colors ${h12Str === h ? 'bg-[#376e35] text-white font-bold shadow-md' : 'hover:bg-green-50 text-gray-700'}`}
                     >
                       {h}
                     </div>
@@ -2004,7 +2006,7 @@ const CustomDateTimePicker = ({ value, onChange, disabled, placeholder = "Select
                     <div
                       key={m} id={`menu-min-${m}`}
                       onClick={() => handleTimeSelect('minute', m)}
-                      className={`cursor-pointer text-xs text-center py-1.5 rounded transition-colors ${mStr === m ? 'bg-[#376e35] text-white font-bold shadow-md' : 'hover:bg-green-50 text-gray-700'}`}
+                      className={`cursor-pointer text-[12px] text-center py-1.5 rounded transition-colors ${mStr === m ? 'bg-[#376e35] text-white font-bold shadow-md' : 'hover:bg-green-50 text-gray-700'}`}
                     >
                       {m}
                     </div>
@@ -2017,7 +2019,7 @@ const CustomDateTimePicker = ({ value, onChange, disabled, placeholder = "Select
                     <div
                       key={period}
                       onClick={() => handleTimeSelect('ampm', period)}
-                      className={`cursor-pointer text-xs text-center py-1.5 rounded transition-colors ${ampm === period ? 'bg-[#376e35] text-white font-bold shadow-md' : 'hover:bg-green-50 text-gray-700'}`}
+                      className={`cursor-pointer text-[12px] text-center py-1.5 rounded transition-colors ${ampm === period ? 'bg-[#376e35] text-white font-bold shadow-md' : 'hover:bg-green-50 text-gray-700'}`}
                     >
                       {period}
                     </div>
