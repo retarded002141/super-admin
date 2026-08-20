@@ -19,7 +19,7 @@ from utils.file_upload import save_upload
 
 router = APIRouter(prefix="/api/applicant", tags=["Applicant"])
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-SECRET_KEY = os.getenv("JWT_SECRET", "preadmission_key")
+SECRET_KEY = os.getenv("JWT_SECRET")
 
 # ==========================================
 # AUTHENTICATION
@@ -139,7 +139,7 @@ async def login(payload: dict = Body(...)):
     import jwt
     import os
     
-    SECRET_KEY = os.getenv("JWT_SECRET", "preadmission_key")
+    SECRET_KEY = os.getenv("JWT_SECRET")
     
     token = jwt.encode(
         {"id": str(applicant["_id"]), "role": "Applicant"},
@@ -487,7 +487,7 @@ async def verify_otp(payload: dict = Body(...)):
     # Generate Real JWT Token
     import jwt
     import os
-    SECRET_KEY = os.getenv("JWT_SECRET", "preadmission_key")
+    SECRET_KEY = os.getenv("JWT_SECRET")
     
     token = jwt.encode(
         {"id": str(applicant["_id"]), "role": "Applicant"},

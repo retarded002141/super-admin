@@ -3,7 +3,7 @@ import jwt
 from fastapi import Request, Depends
 from database import user_collection
 
-SECRET_KEY = os.getenv("JWT_SECRET", "preadmission_key")
+SECRET_KEY = os.getenv("JWT_SECRET")
 
 # ---------------------------------------------------------
 # Authentication

@@ -80,7 +80,7 @@ async def login(response: Response, payload: dict = Body(...)):
         return {"requires2FA": True, "msg": "Verification code sent to your email"}
 
     # If 2FA is disabled, log in directly without OTP
-    SECRET_KEY = os.getenv("JWT_SECRET", "preadmission_key")
+    SECRET_KEY = os.getenv("JWT_SECRET")
     
     token = jwt.encode(
         {
@@ -165,7 +165,7 @@ async def verify_2fa(response: Response, payload: dict = Body(...)):
     # Clear OTP
     user_collection.update_one({"_id": admin["_id"]}, {"$unset": {"loginOtp": "", "loginOtpExpire": ""}})
 
-    SECRET_KEY = os.getenv("JWT_SECRET", "preadmission_key")
+    SECRET_KEY = os.getenv("JWT_SECRET")
     token = jwt.encode(
         {"id": str(admin["_id"]), "role": admin.get("role", "SuperAdmin"), "institute": admin.get("institute", "Admission")},
         SECRET_KEY, algorithm="HS256"
