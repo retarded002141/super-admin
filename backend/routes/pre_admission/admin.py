@@ -263,9 +263,24 @@ async def create_applicant(payload: dict = Body(...), user: dict = Depends(admin
         new_num = 1
         
     applicant_id = f"A-{year_prefix}{new_num:05d}"
+    shared_id = ObjectId()
+    email = payload.get("email", "").strip().lower()
     
+    # 1. Save strictly to users collection WITH default password and username
+    new_user = {
+        "_id": shared_id,
+        "email": email,
+        "password": "password123", 
+        "username": applicant_id,
+        "role": "Applicant",
+        "status": "For Interview",
+        "createdAt": datetime.utcnow()
+    }
+    user_collection.insert_one(new_user)
+    
+    # 2. Save to applicants collection (Ensure password is NOT included)
+    payload["_id"] = shared_id
     payload["applicantId"] = applicant_id
-    payload["password"] = "password123"
     payload["isSubmitted"] = True
     payload["admissionStatus"] = "Pending"
     payload["interviewStatus"] = "Pending"
@@ -276,7 +291,8 @@ async def create_applicant(payload: dict = Body(...), user: dict = Depends(admin
     payload["createdAt"] = datetime.utcnow()
     payload["updatedAt"] = datetime.utcnow()
     
-    # 4. Save to DB
+    payload.pop("password", None) 
+    
     applicant_collection.insert_one(payload)
     return {"msg": "Applicant created successfully", "applicantId": applicant_id}
 
@@ -404,12 +420,9 @@ async def bulk_update_status(payload: dict = Body(...), user: dict = Depends(adm
         newly_forfeited = [a for a in applicants_before if a.get("admissionStatus") != "Forfeit"]
         for app in newly_forfeited:
             old_email = app.get("email", "")
-            applicant_collection.update_one({"_id": app["_id"]}, {"$set": {"applicantId": ""}})
+            applicant_collection.update_one({"_id": app["_id"]}, {"$set": {"applicantId": "Forfeit"}})
             if old_email:
-                user_collection.update_one(
-                    {"email": old_email}, 
-                    {"$set": {"status": "Forfeit", "role": "Forfeit"}}
-                )
+                user_collection.delete_one({"email": old_email})
 
     return {"msg": f"{len(ids)} applicants updated.", "admissionEmailsSent": 0, "admissionEmailFailures": 0}
 
@@ -605,12 +618,9 @@ async def update_status(id: str, payload: dict = Body(...), user: dict = Depends
 
     if admission_status == "Forfeit":
         old_email = applicant.get("email", "")
-        applicant_collection.update_one({"_id": ObjectId(id)}, {"$set": {"applicantId": ""}})
+        applicant_collection.update_one({"_id": ObjectId(id)}, {"$set": {"applicantId": "Forfeit"}})
         if old_email:
-            user_collection.update_one(
-                {"email": old_email}, 
-                {"$set": {"status": "Forfeit", "role": "Forfeit"}}
-            )
+            user_collection.delete_one({"email": old_email})
 
     applicant["_id"] = str(applicant["_id"])
     for k, v in applicant.items():
