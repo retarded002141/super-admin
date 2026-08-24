@@ -114,10 +114,9 @@ async def register(payload: dict = Body(...)):
     db.otps.delete_one({"email": email})
     # --------------------------------
 
-    # Keep password as plain text
     new_applicant = {
         "email": email,
-        "password": password, 
+        "password": pwd_context.hash(password), 
         "schoolYear": current_school_year,
         "isSubmitted": False,
         "admissionStatus": "Pending",
@@ -133,8 +132,19 @@ async def login(payload: dict = Body(...)):
     password = payload.get("password")
 
     applicant = applicant_collection.find_one({"email": email})
-    if not applicant or applicant.get("password") != password:
+    if not applicant:
         raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+    stored_password = applicant.get("password", "")
+    
+    if stored_password.startswith("$2"):
+        if not pwd_context.verify(password, stored_password):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+    else:
+        # Legacy plain-text upgrade
+        if stored_password != password:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        applicant_collection.update_one({"_id": applicant["_id"]}, {"$set": {"password": pwd_context.hash(password)}})
 
     import jwt
     import os
@@ -510,10 +520,9 @@ async def forgot_password(payload: dict = Body(...)):
         raise HTTPException(status_code=404, detail="Email not found.")
 
     temp_password = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+    hashed_temp = pwd_context.hash(temp_password)
     
-    # Optional: If you want to hash it in the future, uncomment this:
-    # temp_password = pwd_context.hash(temp_password)
-    applicant_collection.update_one({"email": email}, {"$set": {"password": temp_password}})
+    applicant_collection.update_one({"email": email}, {"$set": {"password": hashed_temp}})
 
     sender = os.getenv("GMAIL_USER")
     mail_pass = os.getenv("GMAIL_PASS")

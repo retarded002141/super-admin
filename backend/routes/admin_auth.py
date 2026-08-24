@@ -9,6 +9,9 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Response, Body, Request
 from bson import ObjectId
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Import database collections
 from database import user_collection, settings_collection
@@ -16,6 +19,21 @@ from middlewares.auth import get_current_user, admin_only
 
 # Set up the global auth router
 router = APIRouter(prefix="/api/admin", tags=["Global Admin Auth"])
+
+@router.post("/utilities/hash-legacy-passwords")
+async def hash_legacy_passwords():
+    users = user_collection.find({})
+    updated_count = 0
+    
+    for user in users:
+        pw = user.get("password", "")
+        # Hash if not already hashed (bcrypt hashes start with $2)
+        if pw and not pw.startswith("$2"):
+            hashed_pw = pwd_context.hash(pw)
+            user_collection.update_one({"_id": user["_id"]}, {"$set": {"password": hashed_pw}})
+            updated_count += 1
+            
+    return {"message": f"Successfully secured {updated_count} plain-text accounts."}
 
 # ==========================================
 # ADMIN AUTHENTICATION & PROFILE
@@ -30,7 +48,7 @@ async def login(response: Response, payload: dict = Body(...)):
         user_collection.insert_one({
             "username": "System Admin", 
             "email": "admin@example.com", 
-            "password": "password123",
+            "password": pwd_context.hash("password123"),
             "institute": "Admission", 
             "role": "SuperAdmin"
         })
@@ -39,8 +57,17 @@ async def login(response: Response, payload: dict = Body(...)):
     if not admin:
         raise HTTPException(status_code=400, detail="Invalid Credentials: Admin email not found")
         
-    if admin.get("password") != password:
-        raise HTTPException(status_code=400, detail="Invalid Credentials: Wrong password")
+    stored_password = admin.get("password", "")
+    
+    # Check if stored password is a hash
+    if stored_password.startswith("$2"):
+        if not pwd_context.verify(password, stored_password):
+            raise HTTPException(status_code=400, detail="Invalid Credentials: Wrong password")
+    else:
+        # Legacy fallback and auto-upgrade
+        if stored_password != password:
+            raise HTTPException(status_code=400, detail="Invalid Credentials: Wrong password")
+        user_collection.update_one({"_id": admin["_id"]}, {"$set": {"password": pwd_context.hash(password)}})
 
     # Check system settings to see if 2FA is enabled
     settings = settings_collection.find_one({"institute": "Admission"}) or {}
@@ -147,7 +174,8 @@ async def update_profile(request: Request, user: dict = Depends(admin_only)):
 
 @router.put("/change-password")
 async def change_password(payload: dict = Body(...), user: dict = Depends(admin_only)):
-    user_collection.update_one({"_id": ObjectId(user["id"])}, {"$set": {"password": payload.get("newPassword")}})
+    hashed_pw = pwd_context.hash(payload.get("newPassword"))
+    user_collection.update_one({"_id": ObjectId(user["id"])}, {"$set": {"password": hashed_pw}})
     return {"msg": "Password updated successfully"}
 
 @router.post("/verify-2fa")
@@ -238,10 +266,11 @@ async def reset_password(token: str, payload: dict = Body(...)):
     if not admin:
         raise HTTPException(status_code=400, detail="Invalid or expired password reset token.")
         
+    hashed_pw = pwd_context.hash(new_password)
     user_collection.update_one(
         {"_id": admin["_id"]},
         {
-            "$set": {"password": new_password},
+            "$set": {"password": hashed_pw},
             "$unset": {"resetPasswordToken": "", "resetPasswordExpire": ""}
         }
     )
@@ -261,7 +290,7 @@ async def get_all_admins(user: dict = Depends(admin_only)):
 async def create_admin(payload: dict = Body(...), user: dict = Depends(admin_only)):
     if user_collection.find_one({"email": payload.get("email")}):
         raise HTTPException(status_code=400, detail="Admin exists")
-    payload["password"] = "password123"
+    payload["password"] = pwd_context.hash("password123")
     user_collection.insert_one(payload)
     return {"msg": "Admin created"}
 

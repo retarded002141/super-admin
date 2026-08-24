@@ -10,6 +10,9 @@ from datetime import datetime, timedelta
 from utils.pre_admission.pdf_generator import generate_application_form_pdf
 from fastapi import APIRouter, Depends, HTTPException, Response, Body, Request, UploadFile, File
 from bson import ObjectId
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Import database collections
 from database import (
@@ -266,11 +269,11 @@ async def create_applicant(payload: dict = Body(...), user: dict = Depends(admin
     shared_id = ObjectId()
     email = payload.get("email", "").strip().lower()
     
-    # 1. Save strictly to users collection WITH default password and username
+    # 1. Save strictly to users collection WITH hashed default password and username
     new_user = {
         "_id": shared_id,
         "email": email,
-        "password": "password123", 
+        "password": pwd_context.hash("password123"), 
         "username": applicant_id,
         "role": "Applicant",
         "status": "For Interview",
@@ -380,7 +383,7 @@ async def bulk_update_status(payload: dict = Body(...), user: dict = Depends(adm
             user_data = {
                 "username": final_id,
                 "email": app.get("email", ""),
-                "password": app.get("password", "password123"),
+                "password": pwd_context.hash(app.get("password", "password123")),
                 "role": "Applicant",
                 "status": "Admitted",
                 "createdAt": datetime.utcnow(),
@@ -580,7 +583,7 @@ async def update_status(id: str, payload: dict = Body(...), user: dict = Depends
         user_data = {
             "username": final_id,
             "email": applicant.get("email", ""),
-            "password": applicant.get("password", "password123"),
+            "password": pwd_context.hash(applicant.get("password", "password123")),
             "role": "Applicant",
             "status": "Admitted",
             "createdAt": datetime.utcnow(),
