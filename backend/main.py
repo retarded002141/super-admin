@@ -3,20 +3,21 @@ from typing import List
 
 from dotenv import load_dotenv
 import dns.resolver
-from routes import admin_auth
-from routes.pre_admission import admin, applicant, pdf, rubric
-from routes import notification
 
 load_dotenv()
 dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
 dns.resolver.default_resolver.nameservers = ['8.8.8.8', '8.8.4.4']
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from bson import ObjectId
-from database import ping_db, db_admin, settings_collection
+from database import ping_db, db, settings_collection, student_collection
 from schemas.global_schemas import AnnouncementSchema, AnnouncementUpdateSchema
+from routes import admin_auth
+from routes.pre_admission import admin, applicant, pdf, rubric
+from routes import notification
+from utils.cleanup_cron import start_cron
 
 app = FastAPI(title="Central Admin System API")
 
@@ -36,12 +37,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount the Static Uploads Folder (From Admission)
+# Mount the Static Uploads Folder
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-
-# Combined Startup Event
-from utils.cleanup_cron import start_cron
 
 @app.on_event("startup")
 async def startup_event():
@@ -66,26 +64,26 @@ def announcement_helper(doc) -> dict:
     }
 
 # ==========================================
-# ANNOUNCEMENTS ROUTE
+# ANNOUNCEMENTS ROUTES (SYNCHRONIZED WITH SHARED DB)
 # ==========================================
 @app.get("/api/announcements", response_model=List[dict])
 async def get_announcements(category: str = "iiti"):
-    cursor = db_admin["announcements"].find({
+    cursor = db["announcements"].find({
         "$or": [
             {"category": category},
             {"category": {"$exists": False}}
         ]
     })
     announcements = []
-    async for doc in cursor:
+    for doc in cursor:
         announcements.append(announcement_helper(doc))
     return announcements
 
 @app.post("/api/announcements", response_model=dict)
 async def create_announcement(data: AnnouncementSchema):
     doc = data.dict()
-    result = await db_admin["announcements"].insert_one(doc)
-    created_doc = await db_admin["announcements"].find_one({"_id": result.inserted_id})
+    result = db["announcements"].insert_one(doc)
+    created_doc = db["announcements"].find_one({"_id": result.inserted_id})
     return announcement_helper(created_doc)
 
 @app.put("/api/announcements/{id}", response_model=dict)
@@ -97,14 +95,14 @@ async def update_announcement(id: str, data: AnnouncementUpdateSchema):
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields provided for update")
 
-    result = await db_admin["announcements"].update_one(
+    result = db["announcements"].update_one(
         {"_id": ObjectId(id)}, {"$set": update_data}
     )
 
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Announcement not found")
 
-    updated_doc = await db_admin["announcements"].find_one({"_id": ObjectId(id)})
+    updated_doc = db["announcements"].find_one({"_id": ObjectId(id)})
     return announcement_helper(updated_doc)
 
 @app.delete("/api/announcements/{id}")
@@ -112,11 +110,75 @@ async def delete_announcement(id: str):
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID format")
 
-    result = await db_admin["announcements"].delete_one({"_id": ObjectId(id)})
+    result = db["announcements"].delete_one({"_id": ObjectId(id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Announcement not found")
 
     return {"message": "Announcement deleted successfully", "id": id}
+
+# ==========================================
+# PRE-ENROLLMENT ROUTES
+# ==========================================
+@app.get("/api/students")
+async def get_enrollment_students(
+    status: str = None, 
+    year: str = None, 
+    section: str = None, 
+    semester: str = None
+):
+    query = {}
+    if status and status != "All Registered":
+        query["status"] = status
+    if year:
+        query["year"] = year
+    if section:
+        query["section"] = section
+    if semester:
+        query["semester"] = semester
+        
+    students = []
+    for s in student_collection.find(query):
+        s["_id"] = str(s["_id"])
+        students.append(s)
+    return students
+
+@app.get("/api/curriculum/{year}")
+async def get_curriculum_year(year: str):
+    doc = db["curriculums"].find_one({"year": year})
+    if not doc:
+        return {"year": year, "semesters": [{"semester": 1, "subjects": []}, {"semester": 2, "subjects": []}]}
+    doc["_id"] = str(doc["_id"])
+    return doc
+
+@app.post("/api/curriculum")
+async def save_curriculum(payload: dict = Body(...)):
+    year = payload.get("year")
+    data = payload.get("data")
+    db["curriculums"].update_one({"year": year}, {"$set": data}, upsert=True)
+    return {"message": "Curriculum updated", "data": data}
+
+@app.get("/api/curriculum/doc/{doc_id}")
+async def get_irregular_curriculum(doc_id: str):
+    doc = db["curriculums"].find_one({"student_number": doc_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Curriculum not found")
+    doc["_id"] = str(doc["_id"])
+    return doc
+
+@app.post("/api/curriculum/doc/{doc_id}")
+async def save_irregular_curriculum(doc_id: str, payload: dict = Body(...)):
+    data = payload.get("data", {})
+    data["student_number"] = doc_id
+    db["curriculums"].update_one({"student_number": doc_id}, {"$set": data}, upsert=True)
+    return {"message": "Irregular curriculum updated", "data": data}
+
+@app.get("/api/sections")
+async def get_sections():
+    sections = []
+    for sec in db["sections"].find({}):
+        sec["_id"] = str(sec["_id"])
+        sections.append(sec)
+    return sections
 
 # ==========================================
 # PRE-ADMISSION PUBLIC ROUTES

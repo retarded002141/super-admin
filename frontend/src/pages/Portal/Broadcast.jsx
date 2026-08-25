@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import '../../stylesheets/Portal/broadcast.css';
 
-const API_BASE_URL = 'http://localhost:8001/api/announcements';
+const API_BASE_URL = `${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001/api'}/announcements`;
 
 export function Broadcast() {
   const [category, setCategory] = useState('iiti');
@@ -27,7 +27,6 @@ export function Broadcast() {
       const response = await fetch(`${API_BASE_URL}?category=${category}`);
       if (response.ok) {
         const data = await response.json();
-        // Reverse or sort so the newest added posts appear at the front
         setPosts([...data].reverse());
       } else {
         setPosts([]);
@@ -44,7 +43,6 @@ export function Broadcast() {
     loadPosts();
   }, [category]);
 
-  // Open Modal for Create or Edit
   const handleOpenModal = (post = null, e = null) => {
     if (e) e.stopPropagation();
     if (post) {
@@ -97,7 +95,6 @@ export function Broadcast() {
     setDescription(newText);
   };
 
-  // Save or Update Announcement in MongoDB
   const handleSave = async (e) => {
     e.preventDefault();
     if (!title.trim() || !description.trim()) return;
@@ -127,14 +124,12 @@ export function Broadcast() {
 
     try {
       if (editingPostId) {
-        // PUT Request to Update
         await fetch(`${API_BASE_URL}/${editingPostId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
       } else {
-        // POST Request to Create
         await fetch(API_BASE_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -149,7 +144,6 @@ export function Broadcast() {
     }
   };
 
-  // Delete Announcement from MongoDB
   const handleDelete = async (id, postTitle, e) => {
     e.stopPropagation();
     if (window.confirm(`Are you sure you want to delete "${postTitle}"?`)) {
@@ -166,7 +160,6 @@ export function Broadcast() {
 
   return (
     <div className="broadcast-container">
-      {/* Category Tabs */}
       <div className="broadcast-tabs">
         <button
           className={`broadcast-tab-btn ${category === 'iiti' ? 'active' : ''}`}
@@ -182,7 +175,6 @@ export function Broadcast() {
         </button>
       </div>
 
-      {/* Main Control Box */}
       <div className="broadcast-card">
         <div className="broadcast-header">
           <div>
@@ -200,7 +192,6 @@ export function Broadcast() {
           </button>
         </div>
 
-        {/* Posts Cards Grid */}
         <div className="posts-grid">
           {isLoading ? (
             <div className="posts-empty-state"><p>Loading announcements from database...</p></div>
@@ -256,7 +247,6 @@ export function Broadcast() {
         </div>
       </div>
 
-      {/* READ-ONLY PREVIEW MODAL */}
       {previewPost && (
         <div className="modal-overlay" onClick={() => setPreviewPost(null)}>
           <div className="modal-box preview-modal" onClick={(e) => e.stopPropagation()}>
@@ -289,7 +279,6 @@ export function Broadcast() {
         </div>
       )}
 
-      {/* CREATE / EDIT MODAL */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-box">

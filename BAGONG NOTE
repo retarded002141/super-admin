@@ -1,0 +1,26 @@
+username : admin@example.com
+password : password123
+
+cd backend
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
+
+ETO YUNG ENV NG BACKEND
+MONGO_URI=mongodb+srv://admin_ito:KaCollab123@cluster0.p8lakqc.mongodb.net/?appName=Cluster0
+DB_NAME=iiti_db
+SECRET_KEY=my_super_secret_key_2026
+JWT_SECRET=my_super_secret_key_2026
+
+python -m uvicorn main:app --reload --port 8001
+
+
+
+cd frontend
+npm install
+
+ENV NG FRONTEND
+VITE_API_URL=http://127.0.0.1:8001/api
+VITE_ENROLLMENT_API_URL=http://127.0.0.1:8001/api
+
+npm run dev
