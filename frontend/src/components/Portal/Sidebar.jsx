@@ -28,7 +28,6 @@ export function Sidebar({ activeTab, setActiveTab, onLogout }) {
   ];
 
   const portalMenuItems = [
-    { id: 'user-management', label: 'User Management' },
     { id: 'broadcast', label: 'Broadcast' },
     { id: 'students-request', label: 'Students Request' },
   ];
@@ -106,12 +105,11 @@ export function Sidebar({ activeTab, setActiveTab, onLogout }) {
           </button>
         ))}
 
-
         {/* Student Portal Dropdown */}
         <div className="nav-group">
           <button
             onClick={() => setIsPortalExpanded(!isPortalExpanded)}
-            className={`nav-item nav-item-dropdown ${activeTab.startsWith('portal-') || ['user-management', 'broadcast', 'students-request'].includes(activeTab) ? 'active' : ''}`}
+            className={`nav-item nav-item-dropdown ${activeTab.startsWith('portal-') || ['broadcast', 'students-request'].includes(activeTab) ? 'active' : ''}`}
           >
             <span>Student Portal</span>
             <span className={`dropdown-arrow ${isPortalExpanded ? 'open' : ''}`}>▼</span>
