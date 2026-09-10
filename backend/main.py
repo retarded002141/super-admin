@@ -8,6 +8,7 @@ load_dotenv()
 dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
 dns.resolver.default_resolver.nameservers = ['8.8.8.8', '8.8.4.4']
 
+from routes import record_admin
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -207,3 +208,4 @@ app.include_router(admin_auth.router)
 app.include_router(applicant.router)
 app.include_router(notification.router)
 app.include_router(pdf.router)
+app.include_router(record_admin.router)

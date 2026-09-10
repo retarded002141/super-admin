@@ -39,15 +39,15 @@ export function StudentsRequest() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studentNumber: reqItem.studentNumber,
+          requestId: reqItem.id,
           requestIndex: reqItem.requestIndex,
           newStatus: newStatus,
         }),
       });
 
       if (response.ok) {
-        setRequests((prev) =>
-          prev.map((r) => (r.id === reqItem.id ? { ...r, status: newStatus } : r))
-        );
+        // If moved to Ready for Pickup / Approved, backend auto-archives the item
+        fetchRequests();
       } else {
         alert("Failed to update status on server.");
       }
@@ -69,6 +69,7 @@ export function StudentsRequest() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             studentNumber: requestToDelete.studentNumber,
+            requestId: requestToDelete.id,
             requestIndex: requestToDelete.requestIndex,
           }),
         });
@@ -87,13 +88,20 @@ export function StudentsRequest() {
   };
 
   const filteredRequests = requests.filter((req) => {
+    const sName = (req.studentName || '').toLowerCase();
+    const sNum = (req.studentNumber || '').toLowerCase();
+    const dType = (req.documentType || '').toLowerCase();
+    const reasonText = (req.reason || '').toLowerCase();
+    const q = searchQuery.toLowerCase();
+
     const matchesSearch =
-      req.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      req.studentNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      req.documentType.toLowerCase().includes(searchQuery.toLowerCase());
+      sName.includes(q) ||
+      sNum.includes(q) ||
+      dType.includes(q) ||
+      reasonText.includes(q);
 
     const matchesStatus =
-      statusFilter === 'all' || req.status.toLowerCase() === statusFilter.toLowerCase();
+      statusFilter === 'all' || (req.status || '').toLowerCase() === statusFilter.toLowerCase();
 
     return matchesSearch && matchesStatus;
   });
@@ -123,7 +131,7 @@ export function StudentsRequest() {
             <input
               type="text"
               className="search-input"
-              placeholder="Search student or document..."
+              placeholder="Search student, document, or reason..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -136,6 +144,7 @@ export function StudentsRequest() {
               <tr>
                 <th>Student Details</th>
                 <th>Requested Document</th>
+                <th>Reason</th>
                 <th>Year / Semester</th>
                 <th>Date Requested</th>
                 <th>Status</th>
@@ -145,7 +154,7 @@ export function StudentsRequest() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <td colSpan="7" style={{ textAlign: 'center', color: '#64748b' }}>
                     Loading record requests...
                   </td>
                 </tr>
@@ -159,12 +168,15 @@ export function StudentsRequest() {
                       </div>
                     </td>
                     <td>{req.documentType}</td>
+                    <td style={{ maxWidth: '240px', fontSize: '13px', color: '#475569', wordBreak: 'break-word' }}>
+                      {req.reason || '—'}
+                    </td>
                     <td>{req.yearSemester}</td>
                     <td>{req.dateRequested}</td>
                     <td>
                       <span
                         className={`status-badge ${
-                          req.status.toLowerCase() === 'pending'
+                          (req.status || '').toLowerCase() === 'pending'
                             ? 'badge-pending'
                             : 'badge-pickup'
                         }`}
@@ -196,7 +208,7 @@ export function StudentsRequest() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <td colSpan="7" style={{ textAlign: 'center', color: '#64748b' }}>
                     No record requests matching the filter criteria found.
                   </td>
                 </tr>
