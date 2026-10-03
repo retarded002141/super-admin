@@ -3,7 +3,10 @@ import { ToastContext } from "../context/ToastContext.jsx";
 
 let _toastId = 0;
 
-
+/**
+ * Wrap your app (or a subtree) with <ToastProvider> and call
+ * useToast() anywhere inside to show toasts.
+ */
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
@@ -24,9 +27,9 @@ export function ToastProvider({ children }) {
 
   /** Convenience shortcuts */
   toast.success = (msg, dur) => toast(msg, "success", dur);
-  toast.error = (msg, dur) => toast(msg, "error", dur);
-  toast.warning = (msg, dur) => toast(msg, "warning", dur);
-  toast.info = (msg, dur) => toast(msg, "info", dur);
+  toast.error   = (msg, dur) => toast(msg, "error",   dur);
+  toast.warning = (msg, dur) => toast(msg, "warning",  dur);
+  toast.info    = (msg, dur) => toast(msg, "info",    dur);
 
   return (
     <ToastContext.Provider value={{ toast, dismiss }}>
@@ -36,10 +39,12 @@ export function ToastProvider({ children }) {
   );
 }
 
-/* Internal renderer*/
+/* ─────────────────────────────────────────────────────────────
+   Internal renderer
+   ───────────────────────────────────────────────────────────── */
 const STYLES = {
   success: {
-    bar: "bg-[#2e7d32]",
+    bar:  "bg-[#2e7d32]",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-[#2e7d32] shrink-0">
         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -47,7 +52,7 @@ const STYLES = {
     ),
   },
   error: {
-    bar: "bg-red-600",
+    bar:  "bg-red-600",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-red-600 shrink-0">
         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
@@ -55,7 +60,7 @@ const STYLES = {
     ),
   },
   warning: {
-    bar: "bg-amber-500",
+    bar:  "bg-amber-500",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-amber-500 shrink-0">
         <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -63,7 +68,7 @@ const STYLES = {
     ),
   },
   info: {
-    bar: "bg-blue-500",
+    bar:  "bg-blue-500",
     icon: (
       <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-blue-500 shrink-0">
         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />

@@ -12,3 +12,5 @@ __pycache__/
 dist/
 build/
 .DS_Store
+
+/pre-admission-python-main

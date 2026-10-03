@@ -463,7 +463,7 @@ export default function Applications({ navigateToTab, navigationState }) {
           api.get('/public/settings')
         ]);
 
-        setUserRole(profileRes.data.role || "Admin");
+        setUserRole("Admin");
         setUserInstitute(profileRes.data.institute || "IITI");
         setCurrentAdminUsername(profileRes.data.username || profileRes.data.name || "");
         setCoursesList(coursesRes.data || []);

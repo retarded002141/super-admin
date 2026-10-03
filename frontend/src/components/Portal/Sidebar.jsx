@@ -23,7 +23,8 @@ export function Sidebar({ activeTab, setActiveTab, onLogout }) {
   const preAdmissionMenuItems = [
     { id: 'pre-admission-dashboard', label: 'Dashboard' },
     { id: 'pre-admission-applications', label: 'Applications' },
-    { id: 'pre-admission-admission', label: 'Admission' },
+    { id: 'pre-admission-pre-admission', label: 'Pre-Admission' },
+    { id: 'pre-admission-post-admission', label: 'Post-Admission' },
     { id: 'pre-admission-settings', label: 'Settings' },
   ];
 
