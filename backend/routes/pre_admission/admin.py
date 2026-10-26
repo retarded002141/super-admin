@@ -1,6 +1,7 @@
 import os
 import hashlib
 import secrets
+import uuid
 import random
 from datetime import datetime, timedelta, timezone
 from utils.pre_admission.pdf_generator import generate_application_form_pdf
@@ -466,21 +467,40 @@ async def create_course(payload: CoursePayload = Body(...), user: dict = Depends
     payload = payload.model_dump()
     # Generate a string ID so the frontend React keys don't break
     payload["_id"] = str(ObjectId()) 
-    settings_collection.update_one({}, {"$push": {"courses": payload}}, upsert=True)
+    settings_collection.update_one({"institute": "Admission"}, {"$push": {"courses": payload}}, upsert=True)
     return {"msg": "Course added!"}
 
 @router.put("/courses/{id}")
 async def update_course(id: str, payload: CoursePayload = Body(...), user: dict = Depends(admin_only)):
     payload = payload.model_dump()
-    settings_collection.update_one(
-        {"courses._id": id},
+    res = settings_collection.update_one(
+        {"institute": "Admission", "courses._id": id},
         {"$set": {f"courses.$.{k}": v for k, v in payload.items()}}
     )
+    if res.matched_count == 0:
+        res = settings_collection.update_one(
+            {"courses._id": id},
+            {"$set": {f"courses.$.{k}": v for k, v in payload.items()}}
+        )
+    if res.matched_count == 0 and ObjectId.is_valid(id):
+        res = settings_collection.update_one(
+            {"institute": "Admission", "courses._id": ObjectId(id)},
+            {"$set": {f"courses.$.{k}": v for k, v in payload.items()}}
+        )
+        if res.matched_count == 0:
+            settings_collection.update_one(
+                {"courses._id": ObjectId(id)},
+                {"$set": {f"courses.$.{k}": v for k, v in payload.items()}}
+            )
     return {"msg": "Course updated successfully"}
 
 @router.delete("/courses/{id}")
 async def delete_course(id: str, user: dict = Depends(admin_only)):
-    settings_collection.update_one({}, {"$pull": {"courses": {"_id": id}}})
+    pull_ids = [id]
+    if ObjectId.is_valid(id):
+        pull_ids.append(ObjectId(id))
+    settings_collection.update_one({"institute": "Admission"}, {"$pull": {"courses": {"_id": {"$in": pull_ids}}}})
+    settings_collection.update_one({}, {"$pull": {"courses": {"_id": {"$in": pull_ids}}}})
     return {"msg": "Course deleted successfully"}
 
 @router.get("/institutes")
@@ -497,21 +517,40 @@ async def get_institutes(request: Request, user: dict = Depends(admin_only)):
 async def create_institute(payload: InstitutePayload = Body(...), user: dict = Depends(admin_only)):
     payload = payload.model_dump()
     payload["_id"] = str(ObjectId())
-    settings_collection.update_one({}, {"$push": {"institutes": payload}}, upsert=True)
+    settings_collection.update_one({"institute": "Admission"}, {"$push": {"institutes": payload}}, upsert=True)
     return {"msg": "Institute added!"}
 
 @router.put("/institutes/{id}")
 async def update_institute(id: str, payload: InstitutePayload = Body(...), user: dict = Depends(admin_only)):
     payload = payload.model_dump()
-    settings_collection.update_one(
-        {"institutes._id": id},
+    res = settings_collection.update_one(
+        {"institute": "Admission", "institutes._id": id},
         {"$set": {f"institutes.$.{k}": v for k, v in payload.items()}}
     )
+    if res.matched_count == 0:
+        res = settings_collection.update_one(
+            {"institutes._id": id},
+            {"$set": {f"institutes.$.{k}": v for k, v in payload.items()}}
+        )
+    if res.matched_count == 0 and ObjectId.is_valid(id):
+        res = settings_collection.update_one(
+            {"institute": "Admission", "institutes._id": ObjectId(id)},
+            {"$set": {f"institutes.$.{k}": v for k, v in payload.items()}}
+        )
+        if res.matched_count == 0:
+            settings_collection.update_one(
+                {"institutes._id": ObjectId(id)},
+                {"$set": {f"institutes.$.{k}": v for k, v in payload.items()}}
+            )
     return {"msg": "Institute updated"}
 
 @router.delete("/institutes/{id}")
 async def delete_institute(id: str, user: dict = Depends(admin_only)):
-    settings_collection.update_one({}, {"$pull": {"institutes": {"_id": id}}})
+    pull_ids = [id]
+    if ObjectId.is_valid(id):
+        pull_ids.append(ObjectId(id))
+    settings_collection.update_one({"institute": "Admission"}, {"$pull": {"institutes": {"_id": {"$in": pull_ids}}}})
+    settings_collection.update_one({}, {"$pull": {"institutes": {"_id": {"$in": pull_ids}}}})
     return {"msg": "Institute deleted"}
 
 # ==========================================
@@ -560,30 +599,36 @@ async def get_dashboard_stats(request: Request, schoolYear: str = None, archive:
 
     user_inst = get_inst_abbr(raw_user_inst)
     admin_allowed_courses = []
-    if user_role != "superadmin" and user_inst.upper() not in ["ADMISSION", "ALL"]:
-        clean_inst = user_inst.strip().lower()
-        for c in all_courses:
-            if get_inst_abbr(c.get("institute", "")).lower() == clean_inst:
-                admin_allowed_courses.append({
-                    "name": c.get("name", "").lower(),
-                    "abbr": c.get("abbreviation", "").lower()
-                })
+    # Pre-Admission module is strictly scoped to IITI institute (BSIT and any future IITI programs)
+    for c in all_courses:
+        inst = get_inst_abbr(c.get("institute", "")).upper()
+        abbr = c.get("abbreviation", "").upper()
+        name = c.get("name", "").lower()
+        if inst == "IITI" or abbr == "BSIT" or "information technology" in name:
+            admin_allowed_courses.append({
+                "name": name,
+                "abbr": abbr.lower()
+            })
+    if not any(ac["abbr"] == "bsit" for ac in admin_allowed_courses):
+        admin_allowed_courses.append({
+            "name": "bachelor of science in information technology",
+            "abbr": "bsit"
+        })
 
     filtered_applicants = []
     for app in all_applicants:
-        raw_first = app.get("firstChoice", "").strip().lower()
-        raw_second = app.get("secondChoice", "").strip().lower()
-        active_choice = raw_second if app.get("isRejectedFirstChoice") else raw_first
-        if user_role != "superadmin" and user_inst.upper() not in ["ADMISSION", "ALL"]:
-            matched = False
-            for ac in admin_allowed_courses:
-                c_name = ac["name"]
-                c_abbr = ac["abbr"]
-                if (c_name and (c_name in active_choice or active_choice in c_name)) or (c_abbr and (c_abbr == active_choice or f"- {c_abbr}" in active_choice)):
-                    matched = True
-                    break
-            if not matched:
-                continue
+        effective_course = get_applicant_course(app).strip().lower()
+        if not effective_course:
+            continue
+        matched = False
+        for ac in admin_allowed_courses:
+            c_name = ac["name"]
+            c_abbr = ac["abbr"]
+            if (c_name and (c_name in effective_course or effective_course in c_name)) or (c_abbr and (c_abbr == effective_course or f"- {c_abbr}" in effective_course or f"{c_abbr} -" in effective_course or f"({c_abbr})" in effective_course)):
+                matched = True
+                break
+        if not matched:
+            continue
         filtered_applicants.append(app)
 
     total_count = len(filtered_applicants)
@@ -662,16 +707,22 @@ async def get_all_applicants(request: Request, schoolYear: str = None, archive: 
     raw_user_inst = admin_user.get("institute", "Admission") if admin_user else "Admission"
     user_inst = get_inst_abbr(raw_user_inst)
     
-    # Determine allowed courses for non-SuperAdmins
+    # Pre-Admission module is strictly scoped to IITI institute (BSIT and any future IITI programs)
     admin_allowed_courses = []
-    if user_role.replace(" ", "").lower() != "superadmin" and user_inst.upper() not in ["ADMISSION", "ALL"]:
-        clean_inst = user_inst.strip().lower()
-        for c in all_courses:
-            if get_inst_abbr(c.get("institute", "")).lower() == clean_inst:
-                admin_allowed_courses.append({
-                    "name": c.get("name", "").lower(),
-                    "abbr": c.get("abbreviation", "").lower()
-                })
+    for c in all_courses:
+        inst = get_inst_abbr(c.get("institute", "")).upper()
+        abbr = c.get("abbreviation", "").upper()
+        name = c.get("name", "").lower()
+        if inst == "IITI" or abbr == "BSIT" or "information technology" in name:
+            admin_allowed_courses.append({
+                "name": name,
+                "abbr": abbr.lower()
+            })
+    if not any(ac["abbr"] == "bsit" for ac in admin_allowed_courses):
+        admin_allowed_courses.append({
+            "name": "bachelor of science in information technology",
+            "abbr": "bsit"
+        })
     
     deadline_str = settings.get("applicationDeadline")
     is_deadline_passed = False
@@ -687,26 +738,23 @@ async def get_all_applicants(request: Request, schoolYear: str = None, archive: 
 
     formatted_applicants = []
     for app in target_collection.find(query).sort("createdAt", -1):
-        raw_first = app.get("firstChoice", "").strip().lower()
-        raw_second = app.get("secondChoice", "").strip().lower()
-        is_rejected_first_choice = app.get("isRejectedFirstChoice", False)
+        effective_course = get_applicant_course(app).strip().lower()
+        if not effective_course:
+            continue
         
-        active_choice = raw_second if is_rejected_first_choice else raw_first
-        
-        # Apply Server-Side Filtering for regular admins
-        if user_role.replace(" ", "").lower() != "superadmin" and user_inst.upper() not in ["ADMISSION", "ALL"]:
-            matched = False
-            for ac in admin_allowed_courses:
-                c_name = ac["name"]
-                c_abbr = ac["abbr"]
-                if c_name and (c_name in active_choice or active_choice in c_name):
-                    matched = True
-                    break
-                if c_abbr and (c_abbr == active_choice or f"- {c_abbr}" in active_choice or f"{c_abbr} -" in active_choice):
-                    matched = True
-                    break
-            if not matched:
-                continue
+        # Apply Server-Side Filtering for IITI programs
+        matched = False
+        for ac in admin_allowed_courses:
+            c_name = ac["name"]
+            c_abbr = ac["abbr"]
+            if c_name and (c_name in effective_course or effective_course in c_name):
+                matched = True
+                break
+            if c_abbr and (c_abbr == effective_course or f"- {c_abbr}" in effective_course or f"{c_abbr} -" in effective_course or f"({c_abbr})" in effective_course):
+                matched = True
+                break
+        if not matched:
+            continue
                 
         app["_id"] = str(app["_id"])
         first_name = app.get("firstName", "")
@@ -714,10 +762,9 @@ async def get_all_applicants(request: Request, schoolYear: str = None, archive: 
         last_name = app.get("lastName", "")
         app["name"] = f"{last_name}, {first_name} {middle_name}".strip()
         
-        effective_course = get_applicant_course(app)
-        matched_course = next((c for c in all_courses if (c.get("name", "").lower() == active_choice or c.get("abbreviation", "").lower() == active_choice)), None)
-        if not matched_course and " - " in active_choice:
-            parts = [p.strip().lower() for p in active_choice.split(" - ") if p.strip()]
+        matched_course = next((c for c in all_courses if (c.get("name", "").lower() == effective_course or c.get("abbreviation", "").lower() == effective_course)), None)
+        if not matched_course and " - " in effective_course:
+            parts = [p.strip().lower() for p in effective_course.split(" - ") if p.strip()]
             matched_course = next((c for c in all_courses if c.get("name", "").lower() in parts or c.get("abbreviation", "").lower() in parts), None)
 
         c_inst = str(matched_course.get("institute", "")).strip().lower() if matched_course else ""
@@ -729,7 +776,49 @@ async def get_all_applicants(request: Request, schoolYear: str = None, archive: 
         raw_status = str(app.get("status", "")).strip()
         raw_adm_status = str(app.get("admissionStatus", "")).strip()
 
-        if raw_status == "For Interview" or raw_adm_status == "For Interview":
+        if is_waived:
+            app["isInterviewWaived"] = True
+            if app.get("isApplicationAccepted") or app.get("isInterviewed"):
+                is_interviewed = True
+                if target_collection == applicant_collection and not app.get("isInterviewed"):
+                    applicant_collection.update_one(
+                        {"_id": ObjectId(app["_id"])},
+                        {"$set": {
+                            "isInterviewWaived": True,
+                            "isInterviewed": True,
+                            "interviewScore": 50,
+                            "interviewStatus": "Passed",
+                            "interviewRemarks": "Auto-credited (No Interview)"
+                        }}
+                    )
+                if not app.get("interviewStatus") or app.get("interviewStatus") == "Pending":
+                    app["interviewStatus"] = "Passed"
+                if not app.get("interviewRemarks"):
+                    app["interviewRemarks"] = "Auto-credited (No Interview)"
+                if app.get("interviewScore") is None or float(app.get("interviewScore", 0)) == 0:
+                    app["interviewScore"] = 50
+                is_interviewed = True
+                app["status"] = app.get("admissionStatus", "Pending")
+            elif is_deadline_passed:
+                # Exactly 1 day after deadline: Auto-route to Pre-Admission ranking
+                app["isInterviewed"] = True
+                if app.get("interviewScore") is None or float(app.get("interviewScore", 0)) == 0:
+                    app["interviewScore"] = 50
+                if not app.get("interviewStatus") or app.get("interviewStatus") == "Pending":
+                    app["interviewStatus"] = "Passed"
+                if not app.get("interviewRemarks"):
+                    app["interviewRemarks"] = "Auto-credited (No Interview)"
+                is_interviewed = True
+                app["status"] = app.get("admissionStatus", "Pending")
+            else:
+                # Prior to acceptance: Keep in Applications queue as For Docs Submission
+                app["isInterviewed"] = False
+                app["interviewScore"] = 0
+                app["interviewStatus"] = "For Docs Submission"
+                app["interviewRemarks"] = "For Document Submission"
+                app["status"] = "For Docs Submission"
+                is_interviewed = False
+        elif raw_status == "For Interview" or raw_adm_status == "For Interview":
             is_interviewed = False
             app["isInterviewed"] = False
             app["interviewStatus"] = "Pending"
@@ -744,27 +833,6 @@ async def get_all_applicants(request: Request, schoolYear: str = None, archive: 
             app["examStatus"] = "Pending"
             app["admissionStatus"] = "Pending"
             app["admissionRemarks"] = ""
-        elif is_waived:
-            app["isInterviewWaived"] = True
-            if is_deadline_passed:
-                # Exactly 1 day after deadline: Auto-route to Pre-Admission ranking
-                app["isInterviewed"] = True
-                if app.get("interviewScore") is None or float(app.get("interviewScore", 0)) == 0:
-                    app["interviewScore"] = 50
-                if not app.get("interviewStatus") or app.get("interviewStatus") == "Pending":
-                    app["interviewStatus"] = "Passed"
-                if not app.get("interviewRemarks"):
-                    app["interviewRemarks"] = "Auto-credited (No Interview)"
-                is_interviewed = True
-                app["status"] = app.get("admissionStatus", "Pending")
-            else:
-                # During application: Keep in initial queue
-                app["isInterviewed"] = False
-                app["interviewScore"] = 50
-                app["interviewStatus"] = "Passed"
-                app["interviewRemarks"] = "Auto-credited (No Interview)"
-                app["status"] = "For Document Submission"
-                is_interviewed = False
         else:
             is_interviewed = bool(
                 app.get("isInterviewed") or
@@ -810,10 +878,18 @@ async def get_all_applicants(request: Request, schoolYear: str = None, archive: 
 @router.post("/applicant")
 async def create_applicant(payload: GenericDictPayload = Body(...), user: dict = Depends(admin_only)):
     payload = payload.model_dump()
+
+    # Validate phone numbers if supplied
+    for c_field in ["contactNumber", "fatherContact", "motherContact"]:
+        if c_field in payload and payload[c_field]:
+            c_val = str(payload[c_field]).strip()
+            if not re.match(r"^09\d{9}$", c_val):
+                raise HTTPException(status_code=400, detail=f"{c_field} must start with '09' and be exactly 11 digits.")
+
     school_year = payload.get("schoolYear", str(datetime.utcnow().year))
     year_prefix = school_year.split('-')[0] if '-' in school_year else school_year
     last_applicant = applicant_collection.find_one(
-        {"applicantId": {"$regex": f"^A-{year_prefix}"}},
+        {"applicantId": {"$regex": f"^A-{re.escape(str(year_prefix))}"}},
         sort=[("applicantId", -1)]
     )
     
@@ -821,7 +897,7 @@ async def create_applicant(payload: GenericDictPayload = Body(...), user: dict =
         try:
             last_num = int(last_applicant["applicantId"].split(year_prefix)[1])
             new_num = last_num + 1
-        except:
+        except (ValueError, IndexError):
             new_num = 1
     else:
         new_num = 1
@@ -830,11 +906,12 @@ async def create_applicant(payload: GenericDictPayload = Body(...), user: dict =
     shared_id = ObjectId()
     email = payload.get("email", "").strip().lower()
     
-    # 1. Save strictly to users collection WITH hashed default password and username
+    # Use a cryptographically random temporary password instead of a static default password
+    temp_password = secrets.token_urlsafe(9)
     new_user = {
         "_id": shared_id,
         "email": email,
-        "password": pwd_context.hash("password123"), 
+        "password": pwd_context.hash(temp_password), 
         "username": applicant_id,
         "role": "Applicant",
         "status": "For Interview",
@@ -844,6 +921,7 @@ async def create_applicant(payload: GenericDictPayload = Body(...), user: dict =
     
     # 2. Save to applicants collection (Ensure password is NOT included)
     payload["_id"] = shared_id
+    payload["tracking_slug"] = str(uuid.uuid4())
     payload["applicantId"] = applicant_id
     payload["isSubmitted"] = True
     payload["admissionStatus"] = "Pending"
@@ -858,28 +936,59 @@ async def create_applicant(payload: GenericDictPayload = Body(...), user: dict =
     payload.pop("password", None) 
     
     applicant_collection.insert_one(payload)
-    return {"msg": "Applicant created successfully", "applicantId": applicant_id}
+    return {
+        "msg": "Applicant created successfully", 
+        "applicantId": applicant_id,
+        "tracking_slug": payload["tracking_slug"],
+        "tempPassword": temp_password
+    }
 
 @router.put("/applicant/{id}")
 async def update_applicant(id: str, payload: GenericDictPayload = Body(...), user: dict = Depends(admin_only)):
+    if not ObjectId.is_valid(id):
+        raise HTTPException(status_code=400, detail="Invalid applicant ID format")
+
     payload = payload.model_dump()
-    # Prevent overwriting critical fields like _id, password, or status flags
-    update_data = {k: v for k, v in payload.items() if k not in ["_id", "password"]}
+
+    # Mass Assignment Defense: strip fields that must only be set by dedicated endpoints
+    PROTECTED_FIELDS = {
+        "_id", "password",
+        "role", "status",
+        "admissionStatus", "slotStatus",
+        "examScore", "bcetRawScore", "bcetHighestScore", "totalPerc",
+        "interviewScore", "isInterviewed", "isExamined",
+        "isApplicationAccepted",
+        "applicantId", "section"
+    }
+    update_data = {
+        k: v for k, v in payload.items() 
+        if k not in PROTECTED_FIELDS and not str(k).startswith("$") and "." not in str(k)
+    }
+
+    # Validate phone numbers if supplied
+    for c_field in ["contactNumber", "fatherContact", "motherContact"]:
+        if c_field in update_data and update_data[c_field]:
+            c_val = str(update_data[c_field]).strip()
+            if not re.match(r"^09\d{9}$", c_val):
+                raise HTTPException(status_code=400, detail=f"{c_field} must start with '09' and be exactly 11 digits.")
+
     update_data["updatedAt"] = datetime.utcnow()
     
     # Sync root-level firstChoice and secondChoice if they are updated in profile
     if "profile" in update_data and "appDetails" in update_data["profile"]:
         if "firstChoice" in update_data["profile"]["appDetails"]:
-            # Extract just the course name without the abbreviation if it's formatted like "Course Name - ABBR"
             fc = update_data["profile"]["appDetails"]["firstChoice"]
             update_data["firstChoice"] = fc.split(" - ")[0].strip() if fc else ""
         if "secondChoice" in update_data["profile"]["appDetails"]:
             sc = update_data["profile"]["appDetails"]["secondChoice"]
             update_data["secondChoice"] = sc.split(" - ")[0].strip() if sc else ""
+
+    if update_data.get("reconsiderationProgram"):
+        update_data["activeProgram"] = update_data["reconsiderationProgram"]
+        update_data["activeChoiceType"] = "reconsideration"
             
     applicant_collection.update_one({"_id": ObjectId(id)}, {"$set": update_data})
     
-    # If email changed, we should probably update the user collection email too, but for simplicity we assume email might be in payload.
     if "email" in update_data:
         app = applicant_collection.find_one({"_id": ObjectId(id)})
         if app and "applicantId" in app:
@@ -898,6 +1007,8 @@ async def get_archived_years(user: dict = Depends(admin_only)):
 @router.put("/applicant/{id}/encode-score")
 @router.put("/applicant/{id}/score")
 async def encode_score(id: str, payload: EncodeScorePayload = Body(...), user: dict = Depends(admin_only)):
+    if not ObjectId.is_valid(id):
+        raise HTTPException(status_code=400, detail="Invalid applicant ID format")
     payload = payload.model_dump()
     score = float(payload.get("score", 0))
     new_status = "Pending" if score == 0 else ("Passed" if score > 69 else "Failed")
@@ -906,6 +1017,7 @@ async def encode_score(id: str, payload: EncodeScorePayload = Body(...), user: d
         "interviewRatings": payload.get("ratings"),
         "interviewStatus": new_status,
         "isInterviewed": True,
+        "isApplicationAccepted": True,
         "interviewDate": payload.get("interviewDate"),
         "interviewer": payload.get("interviewer", "")
     }
@@ -914,6 +1026,8 @@ async def encode_score(id: str, payload: EncodeScorePayload = Body(...), user: d
 
 @router.put("/applicant/{id}/interview")
 async def update_interview_status(id: str, payload: UpdateInterviewStatusPayload = Body(...), user: dict = Depends(admin_only)):
+    if not ObjectId.is_valid(id):
+        raise HTTPException(status_code=400, detail="Invalid applicant ID format")
     payload = payload.model_dump()
     applicant_collection.update_one({"_id": ObjectId(id)}, {"$set": {"interviewStatus": payload.get("interviewStatus")}})
     return {"msg": "Interview status updated"}
@@ -926,7 +1040,9 @@ async def bulk_update_status(payload: BulkUpdateStatusPayload = Body(...), user:
     if not ids: 
         raise HTTPException(status_code=400, detail="No IDs provided")
     
-    obj_ids = [ObjectId(i) for i in ids]
+    obj_ids = [ObjectId(i) for i in ids if ObjectId.is_valid(i)]
+    if not obj_ids:
+        raise HTTPException(status_code=400, detail="No valid applicant IDs provided")
     applicants_before = list(applicant_collection.find({"_id": {"$in": obj_ids}}))
     
     # Prevent confirming or forfeiting failed applicants (allow if Passed or has passing exam/interview scores)
@@ -1082,6 +1198,8 @@ async def import_scores(file: UploadFile = File(...), user: dict = Depends(admin
 
 @router.put("/applicant/{id}/unlock")
 async def unlock_applicant(id: str, user: dict = Depends(admin_only)):
+    if not ObjectId.is_valid(id):
+        raise HTTPException(status_code=400, detail="Invalid applicant ID format")
     existing = applicant_collection.find_one({"_id": ObjectId(id)})
     if not existing:
         raise HTTPException(status_code=404, detail="Applicant not found")
@@ -1094,6 +1212,8 @@ async def unlock_applicant(id: str, user: dict = Depends(admin_only)):
 
 @router.put("/applicant/{id}/reject-choice")
 async def reject_applicant_choice(id: str, user: dict = Depends(admin_only)):
+    if not ObjectId.is_valid(id):
+        raise HTTPException(status_code=400, detail="Invalid applicant ID format")
     existing = applicant_collection.find_one({"_id": ObjectId(id)})
     if not existing:
         raise HTTPException(status_code=404, detail="Applicant not found")
@@ -1112,9 +1232,17 @@ async def reject_applicant_choice(id: str, user: dict = Depends(admin_only)):
         return {"message": "Applicant permanently rejected and completely removed from the system."}
     elif not is_rejected_first:
         # Reject 1st choice, fall to 2nd choice
+        second_choice = (
+            existing.get("secondChoice") or 
+            (existing.get("profile") or {}).get("appDetails", {}).get("secondChoice", "")
+        )
         applicant_collection.update_one(
             {"_id": ObjectId(id)}, 
-            {"$set": {"isRejectedFirstChoice": True}}
+            {"$set": {
+                "isRejectedFirstChoice": True,
+                "activeProgram": second_choice,
+                "activeChoiceType": "secondChoice"
+            }}
         )
         return {"message": "Applicant rejected for 1st choice. Moved to 2nd choice program."}
     else:
@@ -1124,13 +1252,16 @@ async def reject_applicant_choice(id: str, user: dict = Depends(admin_only)):
             {"$set": {
                 "isRejectedSecondChoice": True,
                 "admissionStatus": "For Interview",
-                "admissionRemarks": "Failed"
+                "admissionRemarks": "Failed",
+                "activeChoiceType": "rejected"
             }}
         )
         return {"message": "Applicant rejected for 2nd choice. Marked for interview (re-evaluation)."}
 
 @router.put("/applicant/{id}/reassign-program")
 async def reassign_applicant_program(id: str, payload: ReassignProgramPayload = Body(...), user: dict = Depends(admin_only)):
+    if not ObjectId.is_valid(id):
+        raise HTTPException(status_code=400, detail="Invalid applicant ID format")
     payload = payload.model_dump()
     new_program = payload.get("newProgram")
     if not new_program:
@@ -1140,12 +1271,18 @@ async def reassign_applicant_program(id: str, payload: ReassignProgramPayload = 
     if not existing:
         raise HTTPException(status_code=404, detail="Applicant not found")
         
-    # Set the new program as firstChoice, and reset rejections
+    orig_fc = existing.get("originalFirstChoice") or existing.get("firstChoice") or (existing.get("profile") or {}).get("appDetails", {}).get("firstChoice", "")
+
+    # Set the new program as activeProgram and reassignedProgram
     applicant_collection.update_one(
         {"_id": ObjectId(id)}, 
         {"$set": {
             "profile.appDetails.firstChoice": new_program,
             "firstChoice": new_program,
+            "originalFirstChoice": orig_fc,
+            "reassignedProgram": new_program,
+            "activeProgram": new_program,
+            "activeChoiceType": "reassigned",
             "isRejectedFirstChoice": False,
             "isRejectedSecondChoice": False,
             "isReassigned": True,
@@ -1171,11 +1308,34 @@ async def accept_applicant_application(id: str, user: dict = Depends(admin_only)
         "applicationAcceptedBy": admin_id
     }
 
+    # Check if interview is waived for applicant's course/institute
+    course_name = get_applicant_course(existing)
+    settings = settings_collection.find_one({"institute": "Admission"}) or {}
+    all_courses = settings.get("courses", [])
+    all_institutes = settings.get("institutes", [])
+    matched_course = next((c for c in all_courses if c.get("name", "").lower() == course_name.lower() or c.get("abbreviation", "").lower() == course_name.lower()), None)
+    c_inst = str(matched_course.get("institute", "")).strip().lower() if matched_course else ""
+    active_inst = next((i for i in all_institutes if str(i.get("_id", "")).lower() == c_inst or i.get("name", "").lower() == c_inst or i.get("abbreviation", "").lower() == c_inst), None)
+    requires_interview = bool(active_inst.get("requiresInterview", True) and active_inst.get("hasInterview", True)) if active_inst else True
+    is_waived = bool(existing.get("isInterviewWaived") or not requires_interview)
+
+    if is_waived:
+        update_data["isInterviewWaived"] = True
+        update_data["isInterviewed"] = True
+        update_data["interviewScore"] = 50
+        update_data["interviewStatus"] = "Passed"
+        update_data["interviewRemarks"] = "Auto-credited (No Interview)"
+        update_data["status"] = existing.get("admissionStatus", "Pending")
+
     applicant_collection.update_one(
         {"_id": ObjectId(id)},
         {"$set": update_data}
     )
-    return {"message": "Applicant application accepted successfully.", "isApplicationAccepted": True}
+    return {
+        "message": "Applicant application accepted successfully.", 
+        "isApplicationAccepted": True,
+        "isInterviewWaived": is_waived
+    }
 
 @router.put("/applicant/{id}/status")
 async def update_status(id: str, payload: UpdateStatusPayload = Body(...), user: dict = Depends(admin_only)):
@@ -1502,7 +1662,7 @@ async def hash_legacy_passwords(user: dict = Depends(admin_only)):
     return {"message": f"Successfully secured {updated_count} plain-text accounts."}
 
 @router.get("/utilities/clean-sections")
-async def clean_sections():
+async def clean_sections(user: dict = Depends(admin_only)):
     """Removes the word 'Section ' from the database so it just leaves the letter."""
     apps_with_long_section = applicant_collection.find({"section": {"$regex": "^Section "}})
     count = 0
@@ -1517,7 +1677,7 @@ async def update_email_template(payload: UpdateEmailTemplatePayload = Body(...),
     payload = payload.model_dump()
     try:
         settings_collection.update_one(
-            {}, 
+            {"institute": "Admission"}, 
             {"$set": {"emailTemplate": payload}},
             upsert=True 
         )

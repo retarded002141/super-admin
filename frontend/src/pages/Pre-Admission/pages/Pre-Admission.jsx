@@ -193,6 +193,10 @@ const getBonus = (app) => {
 
 const isApplicantInterviewed = (app) => {
   if (!app) return false;
+  const isWaived = app.isInterviewWaived === true || app.isInterviewWaived === "true";
+  if (isWaived) {
+    return app.isInterviewed === true || app.isInterviewed === "true";
+  }
   return app.isInterviewed === true ||
     (app.interviewScore !== undefined && app.interviewScore !== null && Number(app.interviewScore) > 0) ||
     app.interviewStatus === 'Passed' ||
@@ -699,10 +703,10 @@ export default function PreAdmission({ navigateToTab, navigationState }) {
           let intStatus = "Pending";
           const hasInterviewScore = app.interviewScore !== undefined && app.interviewScore !== null && Number(app.interviewScore) > 0;
           if (hasInterviewScore) {
-            intStatus = Number(app.interviewScore) > 69 ? "Passed" : "Failed";
+            intStatus = (app.isInterviewWaived || Number(app.interviewScore) > 69) ? "Passed" : "Failed";
           } else if (app.interviewStatus === 'Passed' || app.interviewStatus === 'Failed') {
             intStatus = app.interviewStatus;
-          } else if (app.isInterviewed && (app.admissionStatus === 'Admitted' || app.status === 'Passed')) {
+          } else if (app.isInterviewed && (app.admissionStatus === 'Admitted' || app.status === 'Passed' || app.isInterviewWaived)) {
             intStatus = "Passed";
           }
 
@@ -713,7 +717,7 @@ export default function PreAdmission({ navigateToTab, navigationState }) {
             bcetStatus = app.examStatus;
           }
 
-          const tempApp = { ...safe, examScore: app.examScore || 0, interviewScore: app.interviewScore || 0, bcetRawScore: app.bcetRawScore || null, bcetHighestScore: app.bcetHighestScore || null };
+          const tempApp = { ...safe, examScore: app.examScore || 0, interviewScore: app.interviewScore || 0, isInterviewWaived: app.isInterviewWaived || false, bcetRawScore: app.bcetRawScore || null, bcetHighestScore: app.bcetHighestScore || null };
           const totalPerc = parseFloat(calculateTotal(tempApp));
 
           let admStatus = app.admissionStatus || app.status || "Pending";
@@ -771,7 +775,8 @@ export default function PreAdmission({ navigateToTab, navigationState }) {
             examScore: app.examScore || 0,
             bcetRawScore: app.bcetRawScore || null,
             bcetHighestScore: app.bcetHighestScore || null,
-            interviewSchedule: app.interviewDate || app.interviewSchedule || ""
+            interviewSchedule: app.interviewDate || app.interviewSchedule || "",
+            isInterviewWaived: app.isInterviewWaived || false
           };
         });
 
@@ -882,15 +887,15 @@ export default function PreAdmission({ navigateToTab, navigationState }) {
       return hasInterview && !['Admitted', 'Forfeit', 'Forfeited'].includes(app.slotStatus) && app.admissionStatus !== "Confirmed" && !isForfeited && (!isPassedInDb || app.isSlidUp);
     });
 
-    // 1. THE RBAC SECURITY FILTER 
-    if (userRole === "SuperAdmin" && instituteFilter !== "All") {
-      result = result.filter(a => {
-        const activeChoice = a.reconsiderationProgram || (a.isRejectedFirstChoice ? a.profile?.appDetails?.secondChoice : a.profile?.appDetails?.firstChoice);
-        const activeAbbr = getCourseAbbreviation(activeChoice, coursesList);
-        const activeCourse = coursesList.find(c => c.abbreviation === activeAbbr);
-        return activeCourse?.institute === instituteFilter;
-      });
-    }
+    // 1. THE RBAC SECURITY FILTER: Strictly restrict to IITI programs
+    result = result.filter(a => {
+      const activeChoice = a.reconsiderationProgram || (a.isRejectedFirstChoice ? (a.profile?.appDetails?.secondChoice || a.secondChoice) : (a.profile?.appDetails?.firstChoice || a.firstChoice));
+      if (!activeChoice) return false;
+      const activeAbbr = getCourseAbbreviation(activeChoice, coursesList);
+      const activeCourse = coursesList.find(c => c.abbreviation === activeAbbr || c.name === activeChoice);
+      const courseInst = (activeCourse?.institute || "").toUpperCase();
+      return courseInst === "IITI" || activeAbbr === "BSIT" || activeChoice.toLowerCase().includes("information technology");
+    });
 
     // 2. SEARCH FILTER
     if (searchQuery) {
@@ -918,8 +923,9 @@ export default function PreAdmission({ navigateToTab, navigationState }) {
 
     if (courseFilter !== "All") {
       result = result.filter(app => {
-        const firstAbbr = getCourseAbbreviation(app.profile?.appDetails?.firstChoice, coursesList);
-        return firstAbbr === courseFilter;
+        const activeChoice = app.reconsiderationProgram || (app.isRejectedFirstChoice ? (app.profile?.appDetails?.secondChoice || app.secondChoice) : (app.profile?.appDetails?.firstChoice || app.firstChoice));
+        const activeAbbr = getCourseAbbreviation(activeChoice, coursesList);
+        return activeAbbr === courseFilter;
       });
     }
     if (activeSortType === "name") {
@@ -1220,8 +1226,20 @@ export default function PreAdmission({ navigateToTab, navigationState }) {
 
 
   const loadEmailTemplate = async (templateType) => {
-    const currentAY = activeYear || "2026-2027";
-    const defaultQualificationMsg = `Dear [APPLICANT NAME],\n\nCongratulations! We are pleased to inform you that you have successfully passed the admission process and officially accepted to Baliwag Polytechnic College for the Academic Year ${currentAY} 1st Semester.\n\nApplicant No.: [APPLICANT NO]\nName: [APPLICANT NAME]\nProgram: [PROGRAM]\n\nThe enrollment schedule will be posted on our FB Page BTECH Admission Office.\n\nPlease prepare the following documents before your Enrollment Schedule:\n[REQUIREMENTS]\n\nTo officially accept your offer of admission, please click the button below:\n\n[Accept Slot]\n\nNote: Please be sure to enroll on your scheduled date. If you do not show up on time, you may lose your slot to another student. Please also bring a long brown envelope for your documents.\n\nBest regards,\n\nBTECH Admission Office`;
+    let currentAY = activeYear || "";
+    let fetchedSettings = null;
+    try {
+      const res = await api.get('/admin/settings').catch(() => api.get('/public/settings'));
+      fetchedSettings = res.data;
+      if (res.data?.schoolYear) {
+        currentAY = res.data.schoolYear;
+        setActiveYear(currentAY);
+      }
+    } catch (e) {
+      console.error("Error fetching academic year from settings:", e);
+    }
+
+    const defaultQualificationMsg = `Dear [APPLICANT NAME],\n\nCongratulations! We are pleased to inform you that you have qualified for admission to Baliwag Polytechnic College for Academic Year [Year & Semester].\n\nApplicant No.: [APPLICANT NO]\nName: [APPLICANT NAME]\nProgram: [PROGRAM]\n\nPlease submit the following remaining physical requirements to officially secure your slot:\n[REQUIREMENTS]\n\nTo officially accept your offer of admission, visit the admission office or your institute or click the button below for your confirmation:\n\n[Accept Slot]\n\n(Note: The official enrollment schedule will be posted separately on our official FB page.)\n\nBest regards,\n\nBTECH Admission Office`;
     const defaultReconsiderationMsg = `Dear [APPLICANT NAME],
 
 We are pleased to inform you that your application for admission has been reconsidered. After a thorough review of your file, we are happy to offer you admission to Baliwag Polytechnic College for the upcoming Academic Year [Year & Semester].
@@ -1235,7 +1253,7 @@ The enrollment schedule will be posted on our FB Page BTECH Admission Office.
 Please prepare the following documents before your Enrollment Schedule:
 [REQUIREMENTS]
 
-To officially accept your offer of admission, please visit your Institute or click the button below:
+To officially accept your offer of admission, visit the admission office or your institute or click the button below for your confirmation:
 
 [Accept Slot]
 
@@ -1246,7 +1264,7 @@ Best regards,
 BTECH Admission`;
     const defaultApplicationReceivedMsg = `Dear [APPLICANT NAME],
 
-Thank you for submitting your application to Baliwag Polytechnic College for the Academic Year ${currentAY}.
+Thank you for submitting your application to Baliwag Polytechnic College for the Academic Year [Year & Semester].
 
 We are pleased to invite you to your admission interview. Please note that interviews are conducted on a first-come, first-served basis on your scheduled date:
 
@@ -1270,27 +1288,49 @@ Baliwag Polytechnic College`;
     if (templateType === "Letter of Reconsideration") finalMsg = defaultReconsiderationMsg;
     if (templateType === "Application Received") finalMsg = defaultApplicationReceivedMsg;
 
+    const sanitizeTemplateMsg = (rawMsg) => {
+      let msg = rawMsg || finalMsg;
+      // Remove old hardcopy submission deadline block if present
+      msg = msg.replace(/=======================================================\s*DEADLINE TO SECURE YOUR SLOT & SUBMIT HARDCOPY REQUIREMENTS:[\s\S]*?=======================================================\s*/gi, "");
+      msg = msg.replace(/IMPORTANT: Your admission slot is reserved ONLY until \[HARDCOPY SUBMISSION DEADLINE\].*?\n\n/gi, "");
+      msg = msg.replace(/Date: \[HARDCOPY SUBMISSION DEADLINE\]\n?/gi, "");
+
+      // Clean up legacy doc submission date phrases
+      msg = msg
+        .replace(/on your document submission date on \[Doc Submission Date\]\s*/gi, "")
+        .replace(/on your document submission date posted on our FB page\s*/gi, "")
+        .replace(/on your document submission date\s*/gi, "")
+        .replace(/\[Doc Submission Date\]\s*/gi, "");
+
+      // Convert any legacy hardcoded academic years to the dynamic placeholder [Year & Semester]
+      msg = msg.replace(/Academic\s+Year\s+\d{4}-\d{4}(?:,?\s*(?:1st|2nd)\s*Semester)?/gi, "Academic Year [Year & Semester]");
+      msg = msg.replace(/\[Academic\s+Year\s*&\s*Semester\]/gi, "[Year & Semester]");
+      msg = msg.replace(/\[Academic\s+Year\]/gi, "[Year & Semester]");
+      msg = msg.replace(/\[School\s+Year\]/gi, "[Year & Semester]");
+      return msg;
+    };
+
     try {
-      const res = await api.get('/public/settings');
+      const res = fetchedSettings ? { data: fetchedSettings } : await api.get('/public/settings');
       const templates = res.data?.emailTemplate?.templates || [];
       const savedTpl = templates.find(t => t.title === templateType);
 
       if (savedTpl) {
         setEmailSubject(savedTpl.subject || templateType);
-        setEmailMessage(savedTpl.message || finalMsg);
+        setEmailMessage(sanitizeTemplateMsg(savedTpl.message));
       } else {
         const savedTemplate = res.data?.emailTemplate;
         if (templateType === "Admission Qualification Notice" && savedTemplate && !savedTemplate.templates) {
           setEmailSubject(savedTemplate.subject || "Admission Qualification Notice");
-          setEmailMessage(savedTemplate.message || finalMsg);
+          setEmailMessage(sanitizeTemplateMsg(savedTemplate.message));
         } else {
           setEmailSubject(templateType);
-          setEmailMessage(finalMsg);
+          setEmailMessage(sanitizeTemplateMsg(finalMsg));
         }
       }
     } catch (error) {
       setEmailSubject(templateType);
-      setEmailMessage(finalMsg);
+      setEmailMessage(sanitizeTemplateMsg(finalMsg));
     }
   };
 
@@ -1978,29 +2018,20 @@ Baliwag Polytechnic College`;
               remark !== "Failed";
           });
 
-          // Calculate total_percentage for each and split into Passed/Failed based on 75 cutoff
-          const passingApps = [];
-
-          rankableApps.forEach(app => {
+          // Rank all eligible candidates by total percentage descending (purely ranking-based qualification)
+          const rankedCandidates = rankableApps.map(app => {
             const totalPerc = parseFloat(calculateTotal(app));
             const appIndex = updatedApplicants.findIndex(x => x.rawId === app.rawId);
-
-            if (totalPerc < 75) {
-              const newStatus = "Failed";
-              updatedApplicants[appIndex] = { ...updatedApplicants[appIndex], admissionRemarks: newStatus, admissionStatus: newStatus, status: newStatus };
-              updatesToPush.push({ rawId: app.rawId, examScore: updatedApplicants[appIndex].examScore, status: "Failed" });
-            } else {
-              passingApps.push({ app: updatedApplicants[appIndex], totalPerc, appIndex });
-            }
+            return { app: updatedApplicants[appIndex], totalPerc, appIndex };
           });
 
-          // Sort passing apps descending
-          passingApps.sort((a, b) => b.totalPerc - a.totalPerc);
+          // Sort candidates by total score descending (ranking-based)
+          rankedCandidates.sort((a, b) => b.totalPerc - a.totalPerc);
 
-          // Apply capacity limit
+          // Apply capacity limit based on rank: top ranks up to program limit are Passed, remaining are Waitlisted
           let currentSeated = seated;
           const programPassedIds = [];
-          passingApps.forEach((item) => {
+          rankedCandidates.forEach((item) => {
             let newStatus = currentSeated < limit ? "Passed" : "Waitlisted";
             if (newStatus === "Passed") {
               currentSeated++;
@@ -2922,22 +2953,10 @@ Baliwag Polytechnic College`;
                     <label className="block text-xs font-semibold mb-1 uppercase tracking-tight">Program</label>
                     <select value={courseFilter} onChange={(e) => setCourseFilter(e.target.value)} className="w-full mb-4 p-2 border rounded text-[12px] outline-none">
                       <option value="All">All Programs</option>
-                      {coursesList.map(c => (
+                      {coursesList.filter(c => (c.institute || "").toUpperCase() === "IITI" || c.abbreviation === "BSIT" || c.name?.toLowerCase().includes("information technology")).map(c => (
                         <option key={c._id || c.id} value={c.abbreviation}>{c.abbreviation}</option>
                       ))}
                     </select>
-
-                    {userRole === "SuperAdmin" && (
-                      <>
-                        <label className="block text-xs font-semibold mb-1 uppercase tracking-tight">Institute</label>
-                        <select value={instituteFilter} onChange={(e) => setInstituteFilter(e.target.value)} className="w-full mb-4 p-2 border rounded text-[12px] outline-none">
-                          <option value="All">All Institutes</option>
-                          {institutesList.map(inst => (
-                            <option key={inst._id} value={inst.abbreviation}>{inst.abbreviation}</option>
-                          ))}
-                        </select>
-                      </>
-                    )}
 
                     <div className="flex justify-between gap-2">
                       <button onClick={() => setShowFilter(false)} className="flex-1 py-1 bg-[#376e35] text-white rounded text-xs font-bold">Apply</button>

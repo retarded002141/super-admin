@@ -3,7 +3,7 @@ import api, { BASE_URL } from "../../../services/api";
 import { useToast } from "../context/ToastContext.jsx";
 import { PageLoader, ButtonSpinner } from "../components/Loaders.jsx";
 import {
-  Calendar as CalendarIcon, ChevronLeft, ChevronRight, Save, Edit3, Shield, Activity, AlertTriangle, Trash2, Clock, User, CheckCircle, UserCog,
+  Calendar as CalendarIcon, ChevronLeft, ChevronRight, ChevronDown, Save, Edit3, Shield, Activity, AlertTriangle, Trash2, Clock, User, CheckCircle, UserCog,
   Wrench, Bell, Archive, Database, RefreshCw, History, Eye, EyeOff, UserPlus, BookOpen, Plus, Landmark, Image as ImageIcon, Layout, X
 } from "lucide-react";
 import ReactQuill from "react-quill-new";
@@ -88,7 +88,7 @@ export default function Settings({ navigateToTab, navigationState }) {
     _id: "", name: "", abbreviation: "", address: "", dailyLimit: "", blockedDates: [], requiresInterview: true
   });
 
-  const [securitySettings, setSecuritySettings] = useState({ twoFactorAuth: false });
+  const [securitySettings, setSecuritySettings] = useState({ twoFactorAuth: false, sessionLock: "15 mins" });
   const [notifSettings, setNotifSettings] = useState({
     emailNewApp: true,
     docUploads: true,
@@ -121,6 +121,8 @@ export default function Settings({ navigateToTab, navigationState }) {
   const [institutes, setInstitutes] = useState([]);
   const [filterInstitute, setFilterInstitute] = useState("All");
   const [courseModal, setCourseModal] = useState({ isOpen: false, data: { name: "", abbreviation: "", institute: "", limit: 0, applicationLimit: 0, hasBoardExam: false }, isEdit: false });
+  const [editingInstituteName, setEditingInstituteName] = useState("");
+  const [showInstituteDropdown, setShowInstituteDropdown] = useState(false);
 
   const [instituteModal, setInstituteModal] = useState({
     isOpen: false,
@@ -340,7 +342,16 @@ export default function Settings({ navigateToTab, navigationState }) {
         }
 
         if (res.data.notifications) setNotifSettings(res.data.notifications);
-        if (res.data.security) setSecuritySettings(res.data.security);
+        if (res.data.security) {
+          setSecuritySettings(prev => ({
+            ...prev,
+            ...res.data.security,
+            sessionLock: res.data.security.sessionLock || "15 mins"
+          }));
+          if (res.data.security.sessionLock) {
+            localStorage.setItem("adminSessionLock", res.data.security.sessionLock);
+          }
+        }
         if (res.data.criteriaWeights) setCriteriaWeights({ ...DEFAULT_CRITERIA_WEIGHTS, ...res.data.criteriaWeights });
       }
     } catch (err) {
@@ -731,6 +742,47 @@ export default function Settings({ navigateToTab, navigationState }) {
     }
   };
 
+  const handleToggleSessionLock = async () => {
+    if (isLoading) return;
+    if (isArchiveMode || (currentUserRole !== "SuperAdmin" && currentUserRole !== "Admin")) return;
+    const isCurrentlyOn = securitySettings.sessionLock && securitySettings.sessionLock !== "off";
+    const newTimeout = isCurrentlyOn ? "off" : (localStorage.getItem("adminSessionLockPrevious") || "15 mins");
+    await handleSessionLockChange(newTimeout);
+  };
+
+  const handleSessionLockChange = async (newTimeout) => {
+    if (isLoading) return;
+    if (isArchiveMode || (currentUserRole !== "SuperAdmin" && currentUserRole !== "Admin")) return;
+
+    if (newTimeout !== "off") {
+      localStorage.setItem("adminSessionLockPrevious", newTimeout);
+    }
+    const updatedSecurity = { ...securitySettings, sessionLock: newTimeout };
+    setSecuritySettings(updatedSecurity);
+    localStorage.setItem("adminSessionLock", newTimeout);
+    window.dispatchEvent(new CustomEvent("admin-session-lock-changed", { detail: newTimeout }));
+
+    try {
+      setIsLoading(true);
+      const fullSettings = {
+        ...settings,
+        notifications: notifSettings,
+        security: updatedSecurity
+      };
+      await api.put('/admin/settings', fullSettings);
+      logAction(`Updated Session Lock to ${newTimeout}`);
+      if (newTimeout === "off") {
+        toast.info("Session Lock is now CLOSED (OFF).");
+      } else {
+        toast.info(`Session Lock OPENED and set to ${newTimeout}.`);
+      }
+    } catch (err) {
+      toast.error("Failed to save Session Lock setting.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleNotifToggle = (key) => {
     if (isArchiveMode) return;
     const newState = !notifSettings[key];
@@ -920,6 +972,17 @@ export default function Settings({ navigateToTab, navigationState }) {
     });
   };
 
+  useEffect(() => {
+    if (courseModal.isOpen && courseModal.data?.institute) {
+      const found = institutes.find(i => i.abbreviation === courseModal.data.institute);
+      if (found) setEditingInstituteName(found.name);
+      else setEditingInstituteName("");
+    } else if (!courseModal.isOpen) {
+      setEditingInstituteName("");
+      setShowInstituteDropdown(false);
+    }
+  }, [courseModal.isOpen, courseModal.data?.institute, institutes]);
+
   const handleSaveCourse = async () => {
     const payload = {
       name: courseModal.data.name.trim(),
@@ -948,6 +1011,23 @@ export default function Settings({ navigateToTab, navigationState }) {
 
     try {
       setIsLoading(true);
+
+      // Auto-save institute name if modified in modal
+      const selectedInst = institutes.find(i => i.abbreviation === payload.institute);
+      if (selectedInst && editingInstituteName.trim() && editingInstituteName.trim() !== selectedInst.name) {
+        const instPayload = {
+          name: editingInstituteName.trim(),
+          abbreviation: selectedInst.abbreviation,
+          address: selectedInst.address || "",
+          dailyLimit: selectedInst.dailyLimit || 0,
+          blockedDates: selectedInst.blockedDates || [],
+          requiresInterview: selectedInst.requiresInterview !== false
+        };
+        await api.put(`/admin/institutes/${selectedInst._id}`, instPayload);
+        await logAction(`Updated Institute name to ${editingInstituteName.trim()} (${selectedInst.abbreviation})`);
+        fetchInstitutes();
+      }
+
       if (courseModal.isEdit) {
         await api.put(`/admin/courses/${courseModal.data._id}`, payload);
         toast.info("Course updated successfully!");
@@ -1063,17 +1143,58 @@ export default function Settings({ navigateToTab, navigationState }) {
                 <h3 className="font-bold text-[16px] mb-4 text-[#376e35] flex items-center gap-2"><BookOpen size={20} /> {courseModal.isEdit ? "Edit Course" : "Add Program"}</h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase">Institute</label>
-                    <select
-                      value={courseModal.data.institute || ""}
-                      onChange={e => { const val = e.target.value; setCourseModal(prev => ({ ...prev, data: { ...prev.data, institute: val } })); }}
-                      className="w-full border p-2.5 rounded-lg outline-none focus:border-[#376e35] font-medium"
-                    >
-                      <option value="" disabled>Select Institute</option>
-                      {institutes.map(inst => (
-                        <option key={inst._id} value={inst.abbreviation}>{inst.abbreviation} - {inst.name}</option>
-                      ))}
-                    </select>
+                    <label className="text-xs font-bold text-gray-500 uppercase mb-1 block text-left">Institute</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={editingInstituteName}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setEditingInstituteName(val);
+                          const found = institutes.find(i => i.name.toLowerCase() === val.trim().toLowerCase());
+                          if (found) {
+                            setCourseModal(prev => ({ ...prev, data: { ...prev.data, institute: found.abbreviation } }));
+                          }
+                        }}
+                        onFocus={() => setShowInstituteDropdown(true)}
+                        onClick={() => setShowInstituteDropdown(true)}
+                        placeholder="Select or enter institute name"
+                        className="w-full border border-gray-300 p-2.5 pr-10 rounded-lg outline-none focus:border-[#376e35] font-medium text-[13px] bg-white text-left"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowInstituteDropdown(prev => !prev)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                      >
+                        <ChevronDown size={16} className={`transition-transform duration-200 ${showInstituteDropdown ? "rotate-180" : ""}`} />
+                      </button>
+
+                      {showInstituteDropdown && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setShowInstituteDropdown(false)}
+                          />
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-20 max-h-52 overflow-y-auto divide-y divide-gray-100">
+                            {institutes.map(inst => (
+                              <div
+                                key={inst._id}
+                                onClick={() => {
+                                  setEditingInstituteName(inst.name);
+                                  setCourseModal(prev => ({ ...prev, data: { ...prev.data, institute: inst.abbreviation } }));
+                                  setShowInstituteDropdown(false);
+                                }}
+                                className={`px-3 py-2.5 text-left text-[13px] font-medium cursor-pointer transition-colors ${
+                                  courseModal.data.institute === inst.abbreviation ? "bg-[#376e35]/10 text-[#376e35] font-bold" : "hover:bg-gray-50 text-gray-700"
+                                }`}
+                              >
+                                {inst.name} ({inst.abbreviation})
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Program Name</label>
@@ -2093,21 +2214,44 @@ export default function Settings({ navigateToTab, navigationState }) {
           {/* === SECURITY & LOGS === */}
           {activeTab === "security" && (
             <div className="space-y-8 animate-fade-in">
-              {currentUserRole === "SuperAdmin" && (
+              {(currentUserRole === "SuperAdmin" || currentUserRole === "Admin") && (
                 <div>
                   <h2 className="text-xl font-bold text-black mb-1 flex items-center gap-2">
                     <Shield className="text-[#376e35]" size={24} /> Security Settings
                   </h2>
                   <hr className="border-gray-300 mb-6 mt-2" />
-                  <div className="flex justify-between items-center bg-gray-50 p-6 rounded-xl border border-gray-200">
-                    <div>
-                      <h3 className="font-bold text-[16px] text-gray-800">Two-Factor Authentication (2FA)</h3>
-
-                      <p className="text-[12px] text-gray-600 mt-1">Require verification code for Admin login.</p>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-200">
+                      <div>
+                        <h3 className="font-bold text-[15px] text-gray-800">Two-Factor Authentication (2FA)</h3>
+                        <p className="text-[12px] text-gray-600 mt-0.5">Require verification code for Admin login.</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-[12px] font-bold ${securitySettings.twoFactorAuth ? "text-[#376e35]" : "text-gray-500"}`}>{securitySettings.twoFactorAuth ? "ENABLED" : "DISABLED"}</span>
+                        <ToggleSwitch disabled={isArchiveMode} checked={securitySettings.twoFactorAuth} onChange={handleToggle2FA} />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-[12px] font-bold ${securitySettings.twoFactorAuth ? "text-[#376e35]" : "text-gray-500"}`}>{securitySettings.twoFactorAuth ? "ENABLED" : "DISABLED"}</span>
-                      <ToggleSwitch disabled={isArchiveMode} checked={securitySettings.twoFactorAuth} onChange={handleToggle2FA} />
+
+                    <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-200">
+                      <div>
+                        <h3 className="font-bold text-[15px] text-gray-800">Session Locked</h3>
+                        <p className="text-[12px] text-gray-600 mt-0.5">Automatically lock session after period of inactivity.</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <select
+                          disabled={isArchiveMode}
+                          value={securitySettings.sessionLock || "15 mins"}
+                          onChange={(e) => handleSessionLockChange(e.target.value)}
+                          className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-[13px] font-semibold text-gray-800 focus:ring-2 focus:ring-[#376e35]/30 focus:border-[#376e35] outline-none transition cursor-pointer"
+                        >
+                          <option value="off">Off</option>
+                          <option value="2 mins">2 mins</option>
+                          <option value="5 mins">5 mins</option>
+                          <option value="10 mins">10 mins</option>
+                          <option value="15 mins">15 mins</option>
+                          <option value="20 mins">20 mins</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                 </div>

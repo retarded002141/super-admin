@@ -106,10 +106,17 @@ const INITIAL_RUBRIC_SECTIONS = [
 
 const isApplicantInterviewed = (app) => {
   if (!app) return false;
-  return app.isInterviewed === true ||
+  const isWaived = app.isInterviewWaived === true || app.isInterviewWaived === "true";
+  if (isWaived) {
+    return app.isInterviewed === true || app.isInterviewed === "true";
+  }
+  return Boolean(
+    app.isInterviewed === true ||
+    app.isInterviewed === "true" ||
     (app.interviewScore !== undefined && app.interviewScore !== null && Number(app.interviewScore) > 0) ||
     app.interviewStatus === 'Passed' ||
-    app.interviewStatus === 'Failed';
+    app.interviewStatus === 'Failed'
+  );
 };
 
 /* --- REUSABLE COMPONENTS --- */
@@ -364,6 +371,48 @@ const getImageUrl = (path) => {
   }
 
   return `${BASE_URL}${cleanPath}`;
+};
+
+const getDocsSubmissionHeaderSchedule = (applicant) => {
+  if (!applicant) return "";
+
+  const statusLower = String(applicant.status || applicant.interviewStatus || "").toLowerCase();
+  const isDocsSubmission = statusLower.includes("doc") || statusLower.includes("submission");
+  const isWaived = applicant.isInterviewWaived === true || applicant.isInterviewWaived === "true";
+
+  if (!isDocsSubmission && !isWaived) return "";
+
+  const submissionDate =
+    applicant.docsSubmissionDate ||
+    applicant.documentSubmissionDate ||
+    applicant.submissionDate ||
+    applicant.scheduleDate ||
+    applicant.interviewDate;
+
+  const submissionTime =
+    applicant.docsSubmissionTime ||
+    applicant.documentSubmissionTime ||
+    applicant.submissionTime ||
+    applicant.scheduleTime ||
+    applicant.interviewTime;
+
+  if (!submissionDate && !submissionTime) return "";
+
+  let formattedDate = submissionDate || "";
+  if (submissionDate) {
+    const parsed = new Date(submissionDate);
+    if (!isNaN(parsed.getTime())) {
+      formattedDate = parsed.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric"
+      });
+    }
+  }
+
+  const datePart = formattedDate ? `Schedule: ${formattedDate}` : "Schedule:";
+  const timePart = submissionTime ? ` (${submissionTime})` : "";
+  return `${datePart}${timePart}`;
 };
 
 /* --- MAIN COMPONENT --- */
@@ -702,9 +751,13 @@ export default function Applications({ navigateToTab, navigationState }) {
             ? app.interviewStatus
             : (isInterviewed ? (app.admissionStatus || 'Pending') : 'For Interview');
 
-          const actualStatus = (!isInterviewed || dbStatus === 'Pending Interview' || dbStatus === 'Pending' || dbStatus?.toLowerCase() === 'pending')
+          let actualStatus = (!isInterviewed || dbStatus === 'Pending Interview' || dbStatus === 'Pending' || dbStatus?.toLowerCase() === 'pending')
             ? 'For Interview'
             : dbStatus;
+
+          if (app.isInterviewWaived && !isInterviewed) {
+            actualStatus = 'For Docs Submission';
+          }
 
           const actualSchedule = app.interviewSchedule || app.interviewDate || "";
 
@@ -724,7 +777,9 @@ export default function Applications({ navigateToTab, navigationState }) {
             examScore: app.examScore,
             isExamined: app.isExamined || false,
             admissionStatus: app.admissionStatus,
-            isApplicationAccepted: safe.isApplicationAccepted
+            isInterviewWaived: app.isInterviewWaived || safe.isInterviewWaived || false,
+            isInterviewed: isInterviewed,
+            isApplicationAccepted: app.isApplicationAccepted || safe.isApplicationAccepted || false
           }
         });
 
@@ -766,9 +821,13 @@ export default function Applications({ navigateToTab, navigationState }) {
             ? app.interviewStatus
             : (isInterviewed ? (app.admissionStatus || 'Pending') : 'For Interview');
 
-          const actualStatus = (!isInterviewed || dbStatus === 'Pending Interview' || dbStatus === 'Pending' || dbStatus?.toLowerCase() === 'pending')
+          let actualStatus = (!isInterviewed || dbStatus === 'Pending Interview' || dbStatus === 'Pending' || dbStatus?.toLowerCase() === 'pending')
             ? 'For Interview'
             : dbStatus;
+
+          if (app.isInterviewWaived && !isInterviewed) {
+            actualStatus = 'For Docs Submission';
+          }
 
           const actualSchedule = app.interviewSchedule || app.interviewDate || "";
 
@@ -787,7 +846,10 @@ export default function Applications({ navigateToTab, navigationState }) {
             interviewer: app.interviewer || "",
             examScore: app.examScore,
             isExamined: app.isExamined || false,
-            admissionStatus: app.admissionStatus
+            admissionStatus: app.admissionStatus,
+            isInterviewWaived: app.isInterviewWaived || safe.isInterviewWaived || false,
+            isInterviewed: isInterviewed,
+            isApplicationAccepted: app.isApplicationAccepted || safe.isApplicationAccepted || false
           }
         });
         setApplicants(prev => {
@@ -870,16 +932,17 @@ export default function Applications({ navigateToTab, navigationState }) {
         const rawId = (a.rawId || "").toString().toLowerCase();
         if (!appName.includes(lowerTerm) && !appId.includes(lowerTerm) && !rawId.includes(lowerTerm)) return false;
       }
+      // Strictly restrict to IITI programs
+      const activeChoice = a.reconsiderationProgram || (a.isRejectedFirstChoice ? (a.profile?.appDetails?.secondChoice || a.secondChoice) : (a.profile?.appDetails?.firstChoice || a.firstChoice));
+      if (!activeChoice) return false;
+      const activeAbbr = getCourseAbbreviation(activeChoice, coursesList);
+      const activeCourse = coursesList.find(c => c.abbreviation === activeAbbr || c.name === activeChoice);
+      const courseInst = (activeCourse?.institute || "").toUpperCase();
+      const isIITI = courseInst === "IITI" || activeAbbr === "BSIT" || activeChoice.toLowerCase().includes("information technology");
+      if (!isIITI) return false;
+
       if (courseFilter !== "All") {
-        const firstAbbr = getCourseAbbreviation(a.profile?.appDetails?.firstChoice, coursesList);
-        const secondAbbr = getCourseAbbreviation(a.profile?.appDetails?.secondChoice, coursesList);
-        if (firstAbbr !== courseFilter && secondAbbr !== courseFilter) return false;
-      }
-      if (instituteFilter !== "All") {
-        const activeChoice = a.reconsiderationProgram || (a.isRejectedFirstChoice ? a.profile?.appDetails?.secondChoice : a.profile?.appDetails?.firstChoice);
-        const activeAbbr = getCourseAbbreviation(activeChoice, coursesList);
-        const activeCourse = coursesList.find(c => c.abbreviation === activeAbbr);
-        if (activeCourse?.institute !== instituteFilter) return false;
+        if (activeAbbr !== courseFilter) return false;
       }
       if (typeFilter) {
         const normAppType = normalizeApplicantType(a.type || a.applicantType || a.profile?.appDetails?.applicantType);
@@ -888,7 +951,10 @@ export default function Applications({ navigateToTab, navigationState }) {
       }
       const appLoc = (a.location || getApplicantCityOrTown(a, a)).toUpperCase();
       if (locationFilter && appLoc !== locationFilter.toUpperCase()) return false;
-      if (statusFilter && (!a.status || a.status.toUpperCase() !== statusFilter.toUpperCase())) return false;
+      if (statusFilter) {
+        const normStatus = (a.status === 'For Document Submission' ? 'For Docs Submission' : a.status) || '';
+        if (normStatus.toUpperCase() !== statusFilter.toUpperCase()) return false;
+      }
 
       if (scheduleFilter) {
         const today = getTodayStr();
@@ -1003,7 +1069,21 @@ export default function Applications({ navigateToTab, navigationState }) {
 
       // Process sequentially with a slight delay to avoid triggering the 429 Rate Limiter
       for (const id of selectedApplicantIds) {
-        await encodeScore(id, scoreOverride, autoRatings, today, interviewerName);
+        const targetApp = applicants.find(a => (a._id || a.id) === id);
+        const isWaived = targetApp?.isInterviewWaived === true || targetApp?.isInterviewWaived === "true";
+
+        if (newStatus === 'Passed') {
+          if (isWaived) {
+            // Waived applicant: Accept and auto-credit 50 points to advance to Pre-Admission
+            await api.put(`/admin/applicant/${id}/accept-application`);
+          } else {
+            // Requires interview: Encode score 100 with rubric ratings
+            await encodeScore(id, scoreOverride, autoRatings, today, interviewerName);
+          }
+        } else {
+          // Failed: Encode score 0
+          await encodeScore(id, 0, autoRatings, today, interviewerName);
+        }
         await new Promise(resolve => setTimeout(resolve, 150)); // 150ms delay between requests
       }
 
@@ -2059,13 +2139,22 @@ export default function Applications({ navigateToTab, navigationState }) {
 
     try {
       setIsProcessing(true);
-      await api.put(`/admin/applicant/${appId}/accept-application`);
-      toast.success("Application accepted!");
-      const updatedApp = { ...applicant, isApplicationAccepted: true };
-      setSelectedApplicant(prev => prev ? ({ ...prev, isApplicationAccepted: true }) : null);
-      setApplicants(prev => prev.map(a => (a._id === appId || a.id === appId) ? { ...a, isApplicationAccepted: true } : a));
-      setIsModalOpen(false);
-      openInterviewModal(updatedApp);
+      const res = await api.put(`/admin/applicant/${appId}/accept-application`);
+      const isWaived = res.data?.isInterviewWaived ?? (applicant.isInterviewWaived === true || applicant.isInterviewWaived === "true");
+
+      if (isWaived) {
+        toast.success("Application accepted! Forwarded to Pre-Admission.");
+        setApplicants(prev => prev.filter(a => (a._id || a.id) !== appId));
+        setSelectedApplicant(null);
+        setIsModalOpen(false);
+      } else {
+        toast.success("Application accepted! Please conduct the interview.");
+        const updatedApp = { ...applicant, isApplicationAccepted: true };
+        setSelectedApplicant(prev => prev ? ({ ...prev, isApplicationAccepted: true }) : null);
+        setApplicants(prev => prev.map(a => (a._id === appId || a.id === appId) ? { ...a, isApplicationAccepted: true } : a));
+        setIsModalOpen(false);
+        openInterviewModal(updatedApp);
+      }
     } catch (err) {
       console.error("Failed to accept application:", err);
       toast.error(err.response?.data?.detail || "Failed to accept application.");
@@ -2223,10 +2312,34 @@ export default function Applications({ navigateToTab, navigationState }) {
     const appId = selectedApplicant._id || selectedApplicant.id;
     const isAccepted = !!selectedApplicant?.isApplicationAccepted;
 
+    if (!isAccepted && ratedCriteriaCount < totalCriteriaCount) {
+      setConfirmActionModal({
+        isOpen: true,
+        message: `Grading is not yet finished (${ratedCriteriaCount} of ${totalCriteriaCount} criteria rated), and this applicant has not yet been accepted in application details. Are you sure you want to proceed?`,
+        onConfirm: () => {
+          setConfirmActionModal({ isOpen: false, message: "", onConfirm: null });
+          executeSaveInterview(interviewerName, scoreVal, newStatus, appId);
+        }
+      });
+      return;
+    }
+
     if (ratedCriteriaCount < totalCriteriaCount) {
       setConfirmActionModal({
         isOpen: true,
         message: `Evaluation grading is not yet finished (${ratedCriteriaCount} of ${totalCriteriaCount} criteria rated). Are you sure you want to proceed and submit this evaluation?`,
+        onConfirm: () => {
+          setConfirmActionModal({ isOpen: false, message: "", onConfirm: null });
+          executeSaveInterview(interviewerName, scoreVal, newStatus, appId);
+        }
+      });
+      return;
+    }
+
+    if (!isAccepted) {
+      setConfirmActionModal({
+        isOpen: true,
+        message: "This applicant has not yet been accepted in application details yet. Are you sure you want to proceed?",
         onConfirm: () => {
           setConfirmActionModal({ isOpen: false, message: "", onConfirm: null });
           executeSaveInterview(interviewerName, scoreVal, newStatus, appId);
@@ -2309,22 +2422,10 @@ export default function Applications({ navigateToTab, navigationState }) {
                     <label className="block text-[12px] font-bold mb-1 uppercase tracking-tight">Program</label>
                     <select value={courseFilter} onChange={(e) => setCourseFilter(e.target.value)} className="w-full mb-3 p-2 border rounded text-[12px] outline-none">
                       <option value="All">All Programs</option>
-                      {coursesList.map(c => (
+                      {coursesList.filter(c => (c.institute || "").toUpperCase() === "IITI" || c.abbreviation === "BSIT" || c.name?.toLowerCase().includes("information technology")).map(c => (
                         <option key={c._id} value={c.abbreviation}>{c.abbreviation}</option>
                       ))}
                     </select>
-
-                    {userRole === "SuperAdmin" && (
-                      <>
-                        <label className="block text-[12px] font-bold mb-1 uppercase tracking-tight">Institute</label>
-                        <select value={instituteFilter} onChange={(e) => setInstituteFilter(e.target.value)} className="w-full mb-3 p-2 border rounded text-[12px] outline-none">
-                          <option value="All">All Institutes</option>
-                          {institutesList.map(inst => (
-                            <option key={inst._id} value={inst.abbreviation}>{inst.abbreviation}</option>
-                          ))}
-                        </select>
-                      </>
-                    )}
 
                     <label className="block text-[12px] font-bold mb-1 uppercase tracking-tight">Interview Schedule</label>
                     <select value={scheduleFilter} onChange={(e) => setScheduleFilter(e.target.value)} className="w-full mb-3 p-2 border rounded text-[12px] outline-none">
@@ -2337,6 +2438,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                     <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full mb-3 p-2 border rounded text-[12px] outline-none">
                       <option value="">All Statuses</option>
                       <option value="For Interview">For Interview</option>
+                      <option value="For Docs Submission">For Docs Submission</option>
                       <option value="Passed">Passed</option>
                       <option value="Failed">Failed</option>
                     </select>
@@ -2497,6 +2599,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                         <span className={`px-2 py-1.5 rounded-md text-[9px] font-extrabold uppercase tracking-wide border 
                         ${a.status === 'Passed' ? 'bg-green-100 text-[#376e35] border-green-200' :
                             a.status === 'Failed' ? 'bg-red-100 text-red-700 border-red-200' :
+                              (a.status === 'For Docs Submission' || a.status === 'For Document Submission') ? 'bg-blue-100 text-blue-700 border-blue-200' :
                               'bg-yellow-100 text-yellow-700 border-yellow-200'
                           }`}>
                           {a.status}
@@ -2514,7 +2617,7 @@ export default function Applications({ navigateToTab, navigationState }) {
                           <button
                             onClick={() => openInterviewModal(a)}
                             className="group relative flex items-center justify-center w-7 h-7 bg-yellow-50 hover:bg-yellow-100 text-orange-500 border border-yellow-200 rounded-lg transition-all shadow-sm"
-                            title="Interview"
+                            title={a.isInterviewWaived ? "Document Submission / Notes" : "Interview"}
                           >
                             <MessageSquare size={14} />
                           </button>
@@ -2766,12 +2869,19 @@ export default function Applications({ navigateToTab, navigationState }) {
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative bg-white rounded-[10px] shadow-2xl w-11/12 max-w-[1400px] z-10 flex flex-col max-h-[95vh] overflow-hidden">
 
-            <div className="flex items-center justify-between bg-white border-b border-gray-200 px-6 py-4 shrink-0">
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white border-b border-gray-200 px-6 py-4 shrink-0">
               <div className="flex items-center gap-3">
                 <h3 className="text-gray-800 font-bold uppercase tracking-wide text-[15px]">Applicant Details</h3>
                 <span className=" px-3 py-1 bg-gray-100 rounded text-xs font-mono text-gray-600">{selectedApplicant.id}</span>
               </div>
-              <button className="text-gray-400 hover:text-gray-700 transition text-2xl font-bold leading-none ml-2" onClick={() => setIsModalOpen(false)}>&times;</button>
+              <div className="flex items-center gap-3 sm:gap-4 ml-auto">
+                {getDocsSubmissionHeaderSchedule(selectedApplicant) && (
+                  <span className="text-xs sm:text-[13px] font-semibold text-gray-700 bg-gray-100 px-3 py-1 rounded border border-gray-300">
+                    {getDocsSubmissionHeaderSchedule(selectedApplicant)}
+                  </span>
+                )}
+                <button className="text-gray-400 hover:text-gray-700 transition text-2xl font-bold leading-none ml-2" onClick={() => setIsModalOpen(false)}>&times;</button>
+              </div>
             </div>
 
             <div className="p-8 overflow-y-auto bg-gray-50 space-y-8 flex-1">

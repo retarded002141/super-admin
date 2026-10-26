@@ -9,11 +9,9 @@ Chart.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Lege
 export default function Dashboard({ navigateToTab, navigationState }) {
   const pieChartRef = useRef(null);
   const barChartRef = useRef(null);
-  const timelineChartRef = useRef(null);
 
   const pieChartInstance = useRef(null);
   const barChartInstance = useRef(null);
-  const timelineChartInstance = useRef(null);
 
   const [barChartCount, setBarChartCount] = useState(0);
 
@@ -240,36 +238,31 @@ export default function Dashboard({ navigateToTab, navigationState }) {
   }, [activeYear, isArchiveMode]);
 
   const filteredDashboardApplicants = useMemo(() => {
-    // SuperAdmin or Admission institute view: show all applicants across all institutes
-    if (userRole === "SuperAdmin" || !userInstitute || userInstitute === "Admission" || userInstitute === "All") {
-      return applicants;
-    }
-
-    // Normal Admin view: strictly show applicants belonging to institute
     const courses = publicSettings?.courses || [];
-    const instituteCourseNames = courses
-      .filter(c => c.institute === userInstitute)
-      .map(c => c.name);
+    const iitiCourses = courses.filter(c => 
+      (c.institute && String(c.institute).toUpperCase() === "IITI") ||
+      c.abbreviation === "BSIT" ||
+      c.name?.toLowerCase().includes("information technology")
+    );
+    const iitiCourseNames = iitiCourses.map(c => c.name.toLowerCase());
+    const iitiCourseAbbrs = iitiCourses.map(c => c.abbreviation?.toUpperCase()).filter(Boolean);
 
     return applicants.filter(app => {
-      let activeProgram = app.firstChoice;
-      if (app.isRejectedFirstChoice) {
-        activeProgram = app.secondChoice;
-        if (app.isRejectedSecondChoice || app.reconsiderationProgram) {
-          activeProgram = app.reconsiderationProgram;
-        }
-      }
-
+      let activeProgram = app.reconsiderationProgram || (app.isRejectedFirstChoice ? app.secondChoice : app.firstChoice);
       if (!activeProgram || activeProgram === "N/A") return false;
+      const lowerProg = activeProgram.toLowerCase();
+      const upperProg = activeProgram.toUpperCase();
 
-      if (instituteCourseNames.length > 0) {
-        return instituteCourseNames.some(name => activeProgram.includes(name) || name.includes(activeProgram));
+      if (iitiCourseNames.length > 0 || iitiCourseAbbrs.length > 0) {
+        return (
+          iitiCourseNames.some(name => lowerProg.includes(name) || name.includes(lowerProg)) ||
+          iitiCourseAbbrs.some(abbr => upperProg === abbr || upperProg.includes(`- ${abbr}`) || upperProg.includes(`${abbr} -`))
+        );
       }
 
-      // Fallback matching for IITI / Information Technology
-      return activeProgram.includes("Information Technology") || activeProgram.includes("BSIT");
+      return lowerProg.includes("information technology") || upperProg.includes("BSIT");
     });
-  }, [applicants, userRole, userInstitute, publicSettings]);
+  }, [applicants, publicSettings]);
 
   const totalApplicants = backendStats?.totalApplicants ?? filteredDashboardApplicants.length;
   
@@ -538,6 +531,7 @@ export default function Dashboard({ navigateToTab, navigationState }) {
             </div>
           </div>
         </div>
+
 
         {/* Bottom Section - Normal Admin For Interview Table */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-6">

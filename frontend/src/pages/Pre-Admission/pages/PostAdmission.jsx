@@ -808,22 +808,15 @@ export default function PostAdmission({ navigateToTab, navigationState }) {
                 ['Accepted', 'Forfeit', 'Forfeited'].includes(slotStat);
         });
 
-        // 1. THE RBAC SECURITY FILTER 
-        if (userRole === "SuperAdmin" && instituteFilter !== "All") {
-            result = result.filter(a => {
-                const activeChoice = a.reconsiderationProgram || (a.isRejectedFirstChoice ? a.profile?.appDetails?.secondChoice : a.profile?.appDetails?.firstChoice);
-                const activeAbbr = getCourseAbbreviation(activeChoice, coursesList);
-                const activeCourse = coursesList.find(c => c.abbreviation === activeAbbr);
-                return activeCourse?.institute === instituteFilter;
-            });
-        } else if (userRole !== "SuperAdmin") {
-            result = result.filter(a => {
-                const activeChoice = a.reconsiderationProgram || (a.isRejectedFirstChoice ? a.profile?.appDetails?.secondChoice : a.profile?.appDetails?.firstChoice);
-                const activeAbbr = getCourseAbbreviation(activeChoice, coursesList);
-                const activeCourse = coursesList.find(c => c.abbreviation === activeAbbr);
-                return activeCourse?.institute === userInstitute;
-            });
-        }
+        // 1. THE RBAC SECURITY FILTER: Strictly restrict to IITI programs
+        result = result.filter(a => {
+            const activeChoice = a.reconsiderationProgram || (a.isRejectedFirstChoice ? (a.profile?.appDetails?.secondChoice || a.secondChoice) : (a.profile?.appDetails?.firstChoice || a.firstChoice));
+            if (!activeChoice) return false;
+            const activeAbbr = getCourseAbbreviation(activeChoice, coursesList);
+            const activeCourse = coursesList.find(c => c.abbreviation === activeAbbr || c.name === activeChoice);
+            const courseInst = (activeCourse?.institute || "").toUpperCase();
+            return courseInst === "IITI" || activeAbbr === "BSIT" || activeChoice.toLowerCase().includes("information technology");
+        });
 
         // 2. SEARCH FILTER
         if (searchQuery) {
@@ -851,7 +844,7 @@ export default function PostAdmission({ navigateToTab, navigationState }) {
 
         if (courseFilter !== "All") {
             result = result.filter(app => {
-                const activeChoice = app.reconsiderationProgram || (app.isRejectedFirstChoice ? app.profile?.appDetails?.secondChoice : app.profile?.appDetails?.firstChoice);
+                const activeChoice = app.reconsiderationProgram || (app.isRejectedFirstChoice ? (app.profile?.appDetails?.secondChoice || app.secondChoice) : (app.profile?.appDetails?.firstChoice || app.firstChoice));
                 const activeAbbr = getCourseAbbreviation(activeChoice, coursesList);
                 return activeAbbr === courseFilter;
             });
@@ -2020,23 +2013,11 @@ export default function PostAdmission({ navigateToTab, navigationState }) {
                                             <label className="block text-xs font-semibold mb-1 uppercase tracking-tight text-gray-600">Program</label>
                                             <select value={courseFilter} onChange={(e) => setCourseFilter(e.target.value)} className="w-full p-2 border border- rounded text-[12px] outline-none bg-gray-50">
                                                 <option value="All">All Programs</option>
-                                                {coursesList.map(c => (
+                                                {coursesList.filter(c => (c.institute || "").toUpperCase() === "IITI" || c.abbreviation === "BSIT" || c.name?.toLowerCase().includes("information technology")).map(c => (
                                                     <option key={c._id} value={c.abbreviation}>{c.abbreviation}</option>
                                                 ))}
                                             </select>
                                         </div>
-
-                                        {userRole === "SuperAdmin" && (
-                                            <div className="mb-4">
-                                                <label className="block text-xs font-semibold mb-1 uppercase tracking-tight text-gray-600">Institute</label>
-                                                <select value={instituteFilter} onChange={(e) => setInstituteFilter(e.target.value)} className="w-full p-2 border rounded text-[12px] outline-none bg-gray-50">
-                                                    <option value="All">All Institutes</option>
-                                                    {institutesList.map(inst => (
-                                                        <option key={inst._id} value={inst.abbreviation}>{inst.abbreviation}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        )}
 
                                         <div className="mb-4">
                                             <label className="block text-xs font-semibold mb-1 uppercase tracking-tight text-gray-600">Sort By</label>

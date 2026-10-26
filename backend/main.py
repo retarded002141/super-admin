@@ -256,9 +256,14 @@ async def get_public_settings():
 
 @app.get("/api/public/courses")
 async def get_public_courses():
-    settings = settings_collection.find_one({})
+    settings = settings_collection.find_one({"institute": "Admission"})
+    if not settings:
+        settings = settings_collection.find_one({})
     if settings and "courses" in settings:
-        return settings["courses"]
+        courses = settings["courses"]
+        school_year = settings.get("schoolYear")
+        from utils.pre_admission.program_capacity import with_capacity_status
+        return [with_capacity_status(c, db["applicants"], school_year) for c in courses]
     return []
 
 # ==========================================
