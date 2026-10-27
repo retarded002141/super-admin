@@ -83,12 +83,15 @@ def capacity_all(request: Request, body: dict = Body(...)):
         if auto:
             groups = {(s['year'], s['semester']) for s in sections}
             for year, term in groups:
-                require(
-                    any(adjusted_caps[identity_key(s)]['blockCapacity'] > 0 for s in sections
-                        if s['year'] == year and s['semester'] == term)
-                    or not store['students'].find_one({'year': year, 'semester': term, 'status': 'Block'}),
-                    'Cannot auto-section Block students with zero block capacity', 409
-                )
+                # If the template block capacity itself is 0 and block students exist,
+                # no section can ever receive block students.
+                # If template caps['blockCapacity'] > 0, the auto-rebalancing
+                # safety net will dynamically create a new section to house the affected block students.
+                if caps['blockCapacity'] <= 0:
+                    require(
+                        not store['students'].find_one({'year': year, 'semester': term, 'status': 'Block'}),
+                        'Cannot auto-section Block students with zero block capacity', 409
+                    )
         modified = 0
         for section in sections:
             modified += store['sections'].update_one(
@@ -119,7 +122,12 @@ def capacity_all(request: Request, body: dict = Body(...)):
                 store['sections'].update_one({'_id': section['_id']}, {'$set': {
                     'status': section_status(section.get('blockCount'), section.get('irregularCount'), section_caps['totalCapacity'])
                 }})
-        updated = list(store['sections'].find(query)) if targets else list(store['sections'].find({}))
+        if targets:
+            target_groups = {(text(t.get('year')), semester(t.get('semester'))) for t in targets}
+            group_query = {'$or': [{'year': y, 'semester': s} for y, s in target_groups]}
+            updated = list(store['sections'].find(group_query))
+        else:
+            updated = list(store['sections'].find({}))
     return respond({'message': 'All sections capacity updated successfully', 'modified': modified,
                     'rebalanced': len(rebalanced), 'autoSectioningApplied': auto, 'sections': updated})
 

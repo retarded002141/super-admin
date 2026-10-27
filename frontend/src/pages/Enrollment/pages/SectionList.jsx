@@ -96,13 +96,17 @@ function SectionList() {
         ? Number(previewData.irregularCapacity)
         : Number(section.irregularCapacity ?? 5);
       const irregularShortage = Math.max(0, irregularCount - requestedIrregularCapacity);
+      const rawBlock = requestedBlockCapacity - irregularShortage;
+      const adjustedBlock = Math.max(0, rawBlock);
+      const adjustedIrregular = requestedIrregularCapacity + irregularShortage;
 
       return {
         ...section,
         previewKey: key,
         students: sectionStudents,
-        blockCapacity: requestedBlockCapacity - irregularShortage,
-        irregularCapacity: requestedIrregularCapacity + irregularShortage,
+        blockCapacity: adjustedBlock,
+        irregularCapacity: adjustedIrregular,
+        totalCapacity: adjustedBlock + adjustedIrregular,
         blockStudents: sectionStudents.filter(
           (student) => String(student.status ?? "").trim().toLowerCase() !== "irregular"
         ),
@@ -146,28 +150,54 @@ function SectionList() {
         String(student.year ?? "").trim() === String(group[0].year ?? "").trim() &&
         String(student.semester ?? "").trim() === String(group[0].semester ?? "").trim()
       ));
-      let availableCapacity = targetGroup.reduce((sum, section) => sum + Math.max(1, section.blockCapacity), 0);
-      let nextIndex = group.length;
-      while (blockStudents.length > availableCapacity) {
+
+      // Calculate total available block capacity across the group
+      let availableCapacity = group.reduce((sum, section) => sum + Math.max(0, Number(section.blockCapacity || 0)), 0);
+
+      // Collect existing section letters to avoid duplicate naming
+      const usedSectionLetters = new Set(group.map((s) => String(s.section ?? "").toUpperCase()));
+      let nextLetterCode = 65;
+      const getNextSectionName = () => {
+        while (nextLetterCode <= 90) {
+          const char = String.fromCharCode(nextLetterCode);
+          nextLetterCode += 1;
+          if (!usedSectionLetters.has(char)) {
+            usedSectionLetters.add(char);
+            return char;
+          }
+        }
+        return `S${group.length + 1}`;
+      };
+
+      const templateBlockCap = Math.max(1, Number(previewData.blockCapacity || 1));
+      const templateIrregCap = Math.max(0, Number(previewData.irregularCapacity || 0));
+      const templateTotalCap = Number(previewData.totalCapacity || (templateBlockCap + templateIrregCap));
+
+      // Safety net: if block students exceed available capacity (or if irregular adjustment reduced
+      // block capacity to zero so block students cannot fit), create a new section using template capacities
+      while (blockStudents.length > availableCapacity && templateBlockCap > 0) {
+        const nextLetter = getNextSectionName();
         const newSection = {
           ...group[0],
-          previewKey: `${group[0].year}::${String.fromCharCode(65 + nextIndex)}::${group[0].semester}`,
-          section: String.fromCharCode(65 + nextIndex),
-          blockCapacity: Number(previewData.blockCapacity),
-          irregularCapacity: Number(previewData.irregularCapacity),
+          previewKey: `${group[0].year}::${nextLetter}::${group[0].semester}`,
+          section: nextLetter,
+          blockCapacity: templateBlockCap,
+          irregularCapacity: templateIrregCap,
+          totalCapacity: templateTotalCap,
           students: [],
           blockStudents: [],
           irregularStudents: [],
           irregularCount: 0,
         };
         group.push(newSection);
-        nextIndex += 1;
-        availableCapacity += newSection.blockCapacity;
+        availableCapacity += templateBlockCap;
       }
 
+      // Distribute block students strictly up to each section's available block capacity
       let studentIndex = 0;
       group.forEach((section) => {
-        section.blockStudents = blockStudents.slice(studentIndex, studentIndex + Math.max(1, section.blockCapacity));
+        const cap = Math.max(0, Number(section.blockCapacity || 0));
+        section.blockStudents = blockStudents.slice(studentIndex, studentIndex + cap);
         section.students = [...section.irregularStudents, ...section.blockStudents];
         studentIndex += section.blockStudents.length;
       });
@@ -413,7 +443,12 @@ function SectionList() {
       await refreshStudents();
     } catch (error) {
       console.error("Failed to update capacities", error);
-      toast.error(error?.response?.data?.message || "Failed to update section capacities");
+      const errorMessage =
+        error?.response?.data?.detail?.message ||
+        (typeof error?.response?.data?.detail === "string" ? error.response.data.detail : null) ||
+        error?.response?.data?.message ||
+        "Failed to update section capacities";
+      toast.error(errorMessage);
     } finally {
       setIsUpdating(false);
     }

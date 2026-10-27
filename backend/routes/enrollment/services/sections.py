@@ -255,18 +255,43 @@ def rebalance(store, year, term, preferred=None, capacity_template=None):
         state = create_state(year, term, section['section'], section)
         section_counts = counts.get(identity_key(section), {})
         state['irregularCount'] = section_counts.get('irregularCount', 0)
+        # Safety net: If irregular students exceed irregular capacity, adjust capacities
+        irreg_count = state['irregularCount']
+        irreg_cap = state.get('irregularCapacity', 0)
+        if irreg_count > irreg_cap:
+            shortage = irreg_count - irreg_cap
+            state['irregularCapacity'] = irreg_count
+            state['blockCapacity'] = max(0, state.get('blockCapacity', 0) - shortage)
+            state['totalCapacity'] = state['irregularCapacity'] + state['blockCapacity']
         working.append(state)
     used = {s['section'] for s in working}
-    while len(working) < needed:
+
+    # Safety net: Calculate actual available block capacity across working sections.
+    # Sections whose block capacity was reduced to 0 or negative by irregular adjustments cannot house block students.
+    total_block_capacity = sum(max(0, number(s.get('blockCapacity', 0))) for s in working)
+    while (len(working) < needed or total_block_capacity < len(students)) and caps.get('blockCapacity', 0) > 0:
         name = next_name(used)
         used.add(name)
-        working.append(create_state(year, term, name, caps))
+        new_state = create_state(year, term, name, caps)
+        working.append(new_state)
+        total_block_capacity += max(0, number(new_state.get('blockCapacity', 0)))
+
     for student in students:
+        placed = False
         for state in working:
             if has_capacity(state, student['status']):
                 store['students'].update_one({'_id': student['_id']}, {'$set': {'section': state['section'], 'updatedAt': utcnow()}})
                 add_student(state, student['status'])
+                placed = True
                 break
+        if not placed and caps.get('blockCapacity', 0) > 0:
+            name = next_name(used)
+            used.add(name)
+            new_state = create_state(year, term, name, caps)
+            working.append(new_state)
+            store['students'].update_one({'_id': student['_id']}, {'$set': {'section': new_state['section'], 'updatedAt': utcnow()}})
+            add_student(new_state, student['status'])
+
     # Preserve cross-year placements rather than deleting an externally occupied section.
     for state in working:
         item = identity(*identity_key(state))
