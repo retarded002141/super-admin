@@ -1512,7 +1512,7 @@ const StudentSubjectsView = ({ yearContext, studentContext, setStudentContext, s
       />
       
       {printPreviewModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-[70] font-RB p-4">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-[110] font-RB p-4">
           <div className="bg-white w-full max-w-[900px] max-h-[90vh] rounded-2xl shadow-xl flex flex-col overflow-hidden border border-slate-100">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div>

@@ -35,6 +35,13 @@ const normalizeSemStr = (sem) => {
   return s;
 };
 
+const normalizeAcademicTerm = (term) =>
+  String(term || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s*-\s*/g, "-")
+    .replace(/\s+/g, " ");
+
 // Setup Localizer for the Calendar
 const localizer = momentLocalizer(moment);
 const DnDCalendar = withDragAndDrop(Calendar);
@@ -550,10 +557,15 @@ const [activeSubjectData, setActiveSubjectData] = useState(null);
       const sectionData = masterSchedules.find(d => {
         if (d.sectionName !== selectedSection) return false;
         if (!selectedSemester) return true;
-        const dSem = normalizeSemStr(d.offeredSemester || d.semester);
-        const selSem = normalizeSemStr(selectedSemester);
+        const scheduleTerm = d.offeredSemester || (
+          d.semester && d.academicYear
+            ? `${d.semester} Semester ${d.academicYear}`
+            : ""
+        );
+        const dSem = normalizeAcademicTerm(scheduleTerm);
+        const selSem = normalizeAcademicTerm(selectedSemester);
         return dSem === selSem;
-      }) || masterSchedules.find(d => d.sectionName === selectedSection);
+      });
       const startOfWeek = moment(new Date(2026, 0, 19)).startOf('week').add(1, 'day');
       const daysMap = { "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5 };
 
