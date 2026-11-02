@@ -9,10 +9,9 @@ archived_requests_col = db["archived_requests"]
 
 @router.get("/all")
 def get_all_active_records():
-    """Gathers all active, unarchived student requests from students collection."""
+    """Gathers all active student requests from students collection."""
     all_requests = []
     
-    # Query students who have non-empty record_requests
     cursor = student_collection.find({"record_requests": {"$exists": True, "$ne": []}})
 
     for student in cursor:
@@ -43,8 +42,8 @@ def get_all_active_records():
 @router.post("/status-update")
 def update_record_status(payload: dict = Body(...)):
     """
-    Updates status. If marked Ready for Pickup or Approved,
-    automatically archives the item into 'archived_requests' and removes it from active list.
+    Updates request status directly inside student's record_requests array.
+    Keeps the request visible in active table regardless of status.
     """
     s_num = str(payload.get("studentNumber", ""))
     req_id = payload.get("requestId")
@@ -63,44 +62,27 @@ def update_record_status(payload: dict = Body(...)):
         raise HTTPException(status_code=404, detail="Student not found")
 
     requests = student.get("record_requests", [])
-    target_req = None
     target_idx = -1
 
     for idx, r in enumerate(requests):
         r_id = str(r.get("id") or r.get("_id") or "")
         if (req_id and r_id == str(req_id)) or (req_idx is not None and idx == req_idx):
-            target_req = r
             target_idx = idx
             break
 
-    if not target_req or target_idx == -1:
+    if target_idx == -1:
         raise HTTPException(status_code=404, detail="Record request not found")
 
-    # AUTO-ARCHIVE ON READY FOR PICKUP / APPROVED / COMPLETED
-    if new_status.lower() in ["ready for pickup", "approved", "completed"]:
-        target_req["status"] = new_status
-        target_req["archivedAt"] = datetime.utcnow()
-        target_req["archivedBy"] = "SuperAdmin"
+    # Update status directly without popping/deleting
+    requests[target_idx]["status"] = new_status
+    requests[target_idx]["updatedAt"] = datetime.utcnow()
 
-        # 1. Insert into archived_requests collection in iiti_db
-        archived_requests_col.insert_one(target_req)
+    student_collection.update_one(
+        {"_id": student["_id"]},
+        {"$set": {"record_requests": requests}}
+    )
 
-        # 2. Remove from student's active array
-        requests.pop(target_idx)
-        student_collection.update_one(
-            {"_id": student["_id"]},
-            {"$set": {"record_requests": requests}}
-        )
-
-        return {"message": f"Request marked as {new_status} and archived to 'archived_requests'."}
-    else:
-        # Standard status update
-        requests[target_idx]["status"] = new_status
-        student_collection.update_one(
-            {"_id": student["_id"]},
-            {"$set": {"record_requests": requests}}
-        )
-        return {"message": "Status updated successfully"}
+    return {"message": f"Status updated to {new_status} successfully."}
 
 
 @router.post("/admin-delete")

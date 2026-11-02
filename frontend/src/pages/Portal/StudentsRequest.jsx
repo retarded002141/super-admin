@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import '../../stylesheets/Portal/studentsRequest.css';
 
-const API_BASE_URL = "http://127.0.0.1:8000/api/student/records";
+const API_BASE_URL = "http://127.0.0.1:8001/api/student/records";
 const FIXED_DOCUMENTS = [
   "Certificate of Registration (COR)",
   "Certificate of Grades (COG)",
