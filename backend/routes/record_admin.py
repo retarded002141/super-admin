@@ -5,7 +5,6 @@ from database import db, student_collection
 
 router = APIRouter(prefix="/api/student/records", tags=["Admin Student Records"])
 
-# Define the archive collection in iiti_db
 archived_requests_col = db["archived_requests"]
 
 @router.get("/all")
@@ -17,20 +16,26 @@ def get_all_active_records():
     cursor = student_collection.find({"record_requests": {"$exists": True, "$ne": []}})
 
     for student in cursor:
-        student_num = student.get("studentNumber") or student.get("student_number", "")
-        first_name = student.get("firstName", "") or student.get("first_name", "")
-        last_name = student.get("lastName", "") or student.get("last_name", "")
+        student_num = str(student.get("studentNumber") or student.get("student_number") or "")
+        first_name = student.get("firstName") or student.get("first_name") or ""
+        last_name = student.get("lastName") or student.get("last_name") or ""
         student_name = f"{first_name} {last_name}".strip() or f"Student {student_num}"
 
-        for idx, req in enumerate(student.get("record_requests", [])):
+        req_list = student.get("record_requests", [])
+        for idx, req in enumerate(req_list):
             req_copy = dict(req)
             req_copy["requestIndex"] = idx
             req_copy["studentNumber"] = student_num
-            req_copy["studentName"] = student_name
-            # Ensure an ID exists for React keys
-            if "id" not in req_copy:
-                req_copy["id"] = f"{student_num}_{idx}"
+            req_copy["studentName"] = req.get("studentName") or student_name
+            if "id" not in req_copy or not req_copy["id"]:
+                req_copy["id"] = str(req.get("_id", f"{student_num}_{idx}"))
             all_requests.append(req_copy)
+
+    # Sort newest first
+    all_requests.sort(
+        key=lambda x: str(x.get("createdAt", "") or x.get("dateRequested", "")),
+        reverse=True
+    )
 
     return {"requests": all_requests}
 
@@ -47,7 +52,11 @@ def update_record_status(payload: dict = Body(...)):
     new_status = payload.get("newStatus", "Pending")
 
     student = student_collection.find_one({
-        "$or": [{"studentNumber": s_num}, {"student_number": s_num}]
+        "$or": [
+            {"studentNumber": s_num},
+            {"student_number": s_num},
+            {"studentNumber": int(s_num) if s_num.isdigit() else s_num}
+        ]
     })
 
     if not student:
@@ -58,7 +67,8 @@ def update_record_status(payload: dict = Body(...)):
     target_idx = -1
 
     for idx, r in enumerate(requests):
-        if (req_id and r.get("id") == req_id) or (req_idx is not None and idx == req_idx):
+        r_id = str(r.get("id") or r.get("_id") or "")
+        if (req_id and r_id == str(req_id)) or (req_idx is not None and idx == req_idx):
             target_req = r
             target_idx = idx
             break
@@ -66,7 +76,7 @@ def update_record_status(payload: dict = Body(...)):
     if not target_req or target_idx == -1:
         raise HTTPException(status_code=404, detail="Record request not found")
 
-    # AUTO-ARCHIVE ON READY FOR PICKUP / APPROVED
+    # AUTO-ARCHIVE ON READY FOR PICKUP / APPROVED / COMPLETED
     if new_status.lower() in ["ready for pickup", "approved", "completed"]:
         target_req["status"] = new_status
         target_req["archivedAt"] = datetime.utcnow()
@@ -96,16 +106,28 @@ def update_record_status(payload: dict = Body(...)):
 @router.post("/admin-delete")
 def delete_record_admin(payload: dict = Body(...)):
     s_num = str(payload.get("studentNumber", ""))
+    req_id = payload.get("requestId")
     req_idx = payload.get("requestIndex")
 
     student = student_collection.find_one({
-        "$or": [{"studentNumber": s_num}, {"student_number": s_num}]
+        "$or": [
+            {"studentNumber": s_num},
+            {"student_number": s_num},
+            {"studentNumber": int(s_num) if s_num.isdigit() else s_num}
+        ]
     })
 
-    if student and req_idx is not None:
+    if student:
         requests = student.get("record_requests", [])
-        if 0 <= req_idx < len(requests):
-            requests.pop(req_idx)
+        target_idx = -1
+        for idx, r in enumerate(requests):
+            r_id = str(r.get("id") or r.get("_id") or "")
+            if (req_id and r_id == str(req_id)) or (req_idx is not None and idx == req_idx):
+                target_idx = idx
+                break
+
+        if target_idx != -1:
+            requests.pop(target_idx)
             student_collection.update_one(
                 {"_id": student["_id"]},
                 {"$set": {"record_requests": requests}}
