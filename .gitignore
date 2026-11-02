@@ -1,6 +1,8 @@
 # Environment files
 .env
 *.env
+.env.*
+!.env.example
 
 # Dependencies
 node_modules/
@@ -12,5 +14,12 @@ __pycache__/
 dist/
 build/
 .DS_Store
+
+# Uploads and temporary files
+backend/uploads/
+uploads/
+
+# IDE
+.vscode/
 
 /pre-admission-python-main

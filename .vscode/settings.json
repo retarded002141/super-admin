@@ -1,9 +1,0 @@
-{
-  "python.defaultInterpreterPath": "${workspaceFolder}/backend/venv/Scripts/python.exe",
-  "python.analysis.extraPaths": [
-    "${workspaceFolder}/backend"
-  ],
-  "python.autoComplete.extraPaths": [
-    "${workspaceFolder}/backend"
-  ]
-}

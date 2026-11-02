@@ -51,7 +51,9 @@ const getFullSection = (student) => {
   if (student.section && student.section.includes("-")) return student.section;
   
   const courseCode = student.course || "BSIT"; 
-  return `${courseCode}-${student.year}${student.section}`;
+  const cleanSection = (student.section || "A").toString().replace(/^\d+/, "");
+  const cleanYear = (student.year || "1").toString().replace(/\D+/g, "") || "1";
+  return `${courseCode}-${cleanYear}${cleanSection}`;
 };
 
 const getPassedSubjects = (student) => {
@@ -700,14 +702,15 @@ const DirectoryView = ({ setYearContext, setCurrentView }) => {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to execute batch save.");
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || errorData.error || "Failed to execute batch save.");
       }
       
       setShowBatchModal(false);
       setShowSuccessModal(true);
     } catch (error) {
       console.error("Batch processing failed:", error);
-      alert("Error processing batch advising. Check terminal for details.");
+      alert(`Error processing batch advising: ${error.message || "Check terminal for details."}`);
     }
   };
 
@@ -1192,7 +1195,7 @@ const StudentSubjectsView = ({ yearContext, studentContext, setStudentContext, s
         setSavePrompt({ show: true, type: "success", message: `Advising record for ${studentContext.studentNumber} successfully saved to MongoDB!`, redirect: true });
       } else {
         const errorData = await res.json();
-        setSavePrompt({ show: true, type: "danger", message: `Error saving advising record: ${errorData.error}` });
+        setSavePrompt({ show: true, type: "danger", message: `Error saving advising record: ${errorData.detail || errorData.error || "Failed to save record."}` });
       }
     } catch (err) {
       console.error("Database save failed:", err);
@@ -1512,7 +1515,7 @@ const StudentSubjectsView = ({ yearContext, studentContext, setStudentContext, s
       />
       
       {printPreviewModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-[70] font-RB p-4">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-[110] font-RB p-4">
           <div className="bg-white w-full max-w-[900px] max-h-[90vh] rounded-2xl shadow-xl flex flex-col overflow-hidden border border-slate-100">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div>

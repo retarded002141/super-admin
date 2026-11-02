@@ -2,20 +2,40 @@ import { PRE_ADVISING_API } from '../../services/api';
 import React, { useState, useEffect, useMemo } from "react";
 import { ArrowLeft, ChevronRight, Search, BookOpen, Users, FileText, Printer, Download } from "lucide-react";
 
-// Centralized NoSQL Data Sources
+// Centralized NoSQL Data Sources (maintained for backwards compatibility)
 let studentsData = [];
 let subjectsData = [];
 let sectionsData = [];
 
 const getOrdinalYear = (level) => {
-  if (level === 1) return "1st Year";
-  if (level === 2) return "2nd Year";
-  if (level === 3) return "3rd Year";
-  if (level === 4) return "4th Year";
-  return level ? `${level} Year` : "Unknown";
+  if (!level) return "Unknown";
+  const str = String(level).trim();
+  const num = parseInt(str, 10);
+  if (num === 1 || str.toLowerCase().includes("1")) return "1st Year";
+  if (num === 2 || str.toLowerCase().includes("2")) return "2nd Year";
+  if (num === 3 || str.toLowerCase().includes("3")) return "3rd Year";
+  if (num === 4 || str.toLowerCase().includes("4")) return "4th Year";
+  return `${str} Year`;
 };
 
-//  VIEW 1: MASTER REPORT DIRECTORY 
+const normalizeSemStr = (sem) => {
+  if (!sem) return "";
+  const s = String(sem).toLowerCase().trim();
+  if (s.includes("1") || s.includes("first")) return "1st";
+  if (s.includes("2") || s.includes("second")) return "2nd";
+  return s;
+};
+
+const isYearMatch = (subYear, targetYearStr) => {
+  if (!subYear || !targetYearStr) return false;
+  const num1 = String(subYear).replace(/\D/g, '');
+  const num2 = String(targetYearStr).replace(/\D/g, '');
+  return Boolean(num1 && num2 && num1 === num2);
+};
+
+// ==========================================
+// VIEW 1: MASTER REPORT DIRECTORY 
+// ==========================================
 const ReportDirectory = ({ onSelectYear, onBack }) => {
   const years = [
     { name: "1st Year", desc: "View section and subject reports for 1st year" },
@@ -67,14 +87,16 @@ const ReportDirectory = ({ onSelectYear, onBack }) => {
   );
 };
 
-//  VIEW 2: SECTION DRILL-DOWN 
-const ReportSections = ({ yearContext, reportType, onBack, onSelectSection }) => {
-  const sections = useMemo(() => {
-    if (yearContext.name === "Irregular Students") return ["All Irregular Students"];
+// ==========================================
+// VIEW 2: SECTION DRILL-DOWN 
+// ==========================================
+const ReportSections = ({ yearContext, reportType, onBack, onSelectSection, sections = sectionsData, students = studentsData }) => {
+  const sectionsList = useMemo(() => {
+    if (yearContext?.name === "Irregular Students") return ["All Irregular Students"];
     
     // Pull available sections from the Master Schedule (Schedule DB)
-    const availableSchedules = sectionsData.filter(sec => 
-      getOrdinalYear(parseInt(sec.year)) === yearContext.name
+    const availableSchedules = sections.filter(sec => 
+      getOrdinalYear(sec.year) === yearContext?.name
     );
     
     // Map their proper names (e.g., "BSIT-2A")
@@ -83,17 +105,16 @@ const ReportSections = ({ yearContext, reportType, onBack, onSelectSection }) =>
     );
 
     // Just in case there are students assigned to a section that has no schedule yet, mix them in
-    const yearStudents = studentsData.filter(s => 
-      getOrdinalYear(s.yearLevel) === yearContext.name && (s.status || "").toLowerCase() === "regular"
+    const yearStudents = students.filter(s => 
+      getOrdinalYear(s.yearLevel || s.year) === yearContext?.name && (s.status || "").toLowerCase() === "regular"
     );
     const studentSections = yearStudents.map(s => s.section);
 
     // Combine both arrays and remove duplicates
     const uniqueSections = [...new Set([...scheduleSections, ...studentSections])].filter(Boolean).sort();
     
-    // Remove the hardcoded "BSIT 1A" fallback. If empty, say "No Sections Found".
     return uniqueSections.length > 0 ? uniqueSections : ["No Sections Found"];
-  }, [yearContext]);
+  }, [yearContext, sections, students]);
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -104,7 +125,7 @@ const ReportSections = ({ yearContext, reportType, onBack, onSelectSection }) =>
           </button>
           <div>
             <div className="flex items-center gap-2 text-xs text-slate-400 font-medium">
-              <span>Report</span><ChevronRight size={12} /><span className="text-slate-700 font-semibold">{yearContext.name}</span>
+              <span>Report</span><ChevronRight size={12} /><span className="text-slate-700 font-semibold">{yearContext?.name}</span>
             </div>
             <h1 className="font-bold text-xl text-slate-800 tracking-tight mt-0.5">Select Section</h1>
           </div>
@@ -113,7 +134,7 @@ const ReportSections = ({ yearContext, reportType, onBack, onSelectSection }) =>
 
       <div className="p-8 flex flex-col gap-6 w-full max-w-[1600px] flex-1 mx-auto">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {sections.map((secName, idx) => (
+          {sectionsList.map((secName, idx) => (
             <button
               key={idx}
               onClick={() => onSelectSection(secName)}
@@ -132,26 +153,28 @@ const ReportSections = ({ yearContext, reportType, onBack, onSelectSection }) =>
   );
 };
 
-//  VIEW 3: SUBJECT DRILL-DOWN 
-const ReportSubjects = ({ yearContext, sectionContext, activeSemester, onBack, onSelectSubject }) => {
+// ==========================================
+// VIEW 3: SUBJECT DRILL-DOWN 
+// ==========================================
+const ReportSubjects = ({ yearContext, sectionContext, activeSemester, onBack, onSelectSubject, sections = sectionsData, students = studentsData, subjectsList = subjectsData }) => {
   const subjects = useMemo(() => {
     // Find the matching section schedule for the CURRENT ACTIVE SEMESTER
-    const matchedSection = sectionsData.find(sec => 
+    const matchedSection = sections.find(sec => 
       sec.sectionName === sectionContext && 
-      sec.semester === activeSemester
+      normalizeSemStr(sec.semester || sec.offeredSemester) === normalizeSemStr(activeSemester)
     );
     
     if (!matchedSection || !matchedSection.classes || matchedSection.classes.length === 0) {
       const targetYear = yearContext?.name ? yearContext.name.split(" ")[0] : "1st"; 
       
       const filteredSubjects = yearContext?.name === "Irregular Students" 
-        ? subjectsData.filter(sub => sub.targetSemester === activeSemester)
-        : subjectsData.filter(sub => sub.targetSemester === activeSemester && sub.yearLevel === targetYear);
-      
+        ? subjectsList.filter(sub => normalizeSemStr(sub.targetSemester) === normalizeSemStr(activeSemester))
+        : subjectsList.filter(sub => normalizeSemStr(sub.targetSemester) === normalizeSemStr(activeSemester) && isYearMatch(sub.yearLevel, targetYear));
+
       return filteredSubjects
         .map(sub => {
           // Count active students in this section enrolled in this subject
-          const enrolledCount = studentsData.filter(s => {
+          const enrolledCount = students.filter(s => {
             // If we are viewing irregular students, match by status, not section string
             if (sectionContext === "All Irregular Students") {
                if ((s.status || "").toLowerCase() !== "irregular") return false;
@@ -159,7 +182,7 @@ const ReportSubjects = ({ yearContext, sectionContext, activeSemester, onBack, o
                if (s.section !== sectionContext) return false;
             }
             
-            const enrolled = s.advisedSubjects || [];
+            const enrolled = s.advisedSubjects || s.enrolledSubjects || [];
             return enrolled.some(e => e.subjectId === sub.subjectCode || e.subject_id === sub.subjectCode || e.subjectCode === sub.subjectCode);
           }).length;
 
@@ -180,29 +203,28 @@ const ReportSubjects = ({ yearContext, sectionContext, activeSemester, onBack, o
     
     return uniqueCodes.map(code => {
       const schBlock = matchedSection.classes.find(c => c.subjectCode === code);
-      const subInfo = subjectsData.find(sub => sub.subjectCode === code);
+      const subInfo = subjectsList.find(sub => sub.subjectCode === code);
       
       // Count active students in this section enrolled in this subject
-      const enrolledCount = studentsData.filter(s => {
+      const enrolledCount = students.filter(s => {
         if (sectionContext === "All Irregular Students") {
            if ((s.status || "").toLowerCase() !== "irregular") return false;
         } else {
            if (s.section !== sectionContext) return false;
         }
         
-        const enrolled = s.advisedSubjects || [];
-        // e.subjectId === code to catch the advising records from MongoDB
+        const enrolled = s.advisedSubjects || s.enrolledSubjects || [];
         return enrolled.some(e => e.subjectId === code || e.subject_id === code || e.subjectCode === code);
       }).length;
 
       return {
         code: code,
-        title: subInfo ? subInfo.subjectTitle : schBlock.title,
-        prof: schBlock.profName || "TBA",
+        title: subInfo ? subInfo.subjectTitle : (schBlock?.title || schBlock?.subjectName || code),
+        prof: schBlock?.profName || schBlock?.instructorName || "TBA",
         studentCount: enrolledCount
       };
     });
-  }, [sectionContext, yearContext, activeSemester]);
+  }, [sectionContext, yearContext, activeSemester, sections, students, subjectsList]);
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -257,8 +279,10 @@ const ReportSubjects = ({ yearContext, sectionContext, activeSemester, onBack, o
   );
 };
 
-//  VIEW 4: STUDENT ROSTER REPORT TABLE 
-const ReportStudentTable = ({ yearContext, sectionContext, subjectContext, profContext, reportType, onBack }) => {
+// ==========================================
+// VIEW 4: STUDENT ROSTER REPORT TABLE 
+// ==========================================
+const ReportStudentTable = ({ yearContext, sectionContext, subjectContext, profContext, reportType, activeAcademicYear, onBack, students = studentsData, sections = sectionsData }) => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [sortConfig, setSortConfig] = useState({ key: "lastName", direction: "asc" });
@@ -266,13 +290,13 @@ const ReportStudentTable = ({ yearContext, sectionContext, subjectContext, profC
   const rosterStudents = useMemo(() => {
     // SECTION MASTERLIST
     if (reportType === "section") {
-      if (sectionContext === "All Irregular Students") return studentsData.filter(s => (s.status || "").toLowerCase() === "irregular");
-      return studentsData.filter(s => s.section === sectionContext);
+      if (sectionContext === "All Irregular Students") return students.filter(s => (s.status || "").toLowerCase() === "irregular");
+      return students.filter(s => s.section === sectionContext);
     }
 
     // CLASS ROSTER
     if (reportType === "class") {
-      return studentsData.filter(s => {
+      return students.filter(s => {
         if (sectionContext === "All Irregular Students") {
           if ((s.status || "").toLowerCase() !== "irregular") return false;
         } else {
@@ -285,19 +309,19 @@ const ReportStudentTable = ({ yearContext, sectionContext, subjectContext, profC
 
     // PROFESSOR MASTERLIST
     if (reportType === "professor") {
-      const profSections = sectionsData.filter(sec => {
+      const profSections = sections.filter(sec => {
         const blocks = sec.classes || sec.schedules || [];
         return blocks.some(b => b.subjectCode === subjectContext?.code && (b.profName === profContext || b.instructorName === profContext));
       }).map(sec => sec.sectionName);
 
-      return studentsData.filter(s => {
+      return students.filter(s => {
         if (!profSections.includes(s.section)) return false; 
         const enrolled = s.advisedSubjects || s.enrolledSubjects || [];
         return enrolled.some(sub => sub.subjectId === subjectContext?.code || sub.subject_id === subjectContext?.code || sub.subjectCode === subjectContext?.code);
       });
     }
     return [];
-  }, [reportType, sectionContext, subjectContext, profContext]);
+  }, [reportType, sectionContext, subjectContext, profContext, students, sections]);
 
   const processedStudents = useMemo(() => {
     let result = [...rosterStudents];
@@ -390,7 +414,7 @@ const ReportStudentTable = ({ yearContext, sectionContext, subjectContext, profC
                 {reportType === "section" ? `Official Roster: ${sectionContext}` : `${subjectContext?.code} - ${subjectContext?.title}`}
               </h2>
               <p className="text-xs text-slate-500 mt-0.5 print:text-sm print:mt-1">
-                {reportType === "section" ? <>Academic Year: <span className="font-semibold text-slate-700 print:text-black">2025-2026</span></> :
+                {reportType === "section" ? <>Academic Year: <span className="font-semibold text-slate-700 print:text-black">{activeAcademicYear || "2026-2027"}</span></> :
                  reportType === "professor" ? <>Instructor: <span className="font-semibold text-slate-700 print:text-black">{profContext}</span> | Sections: <span className="font-semibold text-slate-700 print:text-black">All Tagged Sections</span></> :
                  <>Instructor: <span className="font-semibold text-slate-700 print:text-black">{subjectContext?.prof}</span> | Section: <span className="font-semibold text-slate-700 print:text-black">{sectionContext}</span></>}
               </p>
@@ -445,8 +469,10 @@ const ReportStudentTable = ({ yearContext, sectionContext, subjectContext, profC
   );
 };
 
-//  VIEW: DASHBOARD HOME (THE 3 TRACKS) 
-const ReportHome = ({ onSelectTrack }) => {
+// ==========================================
+// VIEW: DASHBOARD HOME (THE 3 TRACKS) 
+// ==========================================
+const ReportHome = ({ onSelectTrack, onBack }) => {
   const tracks = [
     { id: "section", title: "Section Masterlists", desc: "View every student enrolled in a specific section.", icon: <Users size={28} /> },
     { id: "class", title: "Class Rosters", desc: "View students taking a specific subject within a section.", icon: <BookOpen size={28} /> },
@@ -455,9 +481,16 @@ const ReportHome = ({ onSelectTrack }) => {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <div className="px-8 pt-6 pb-4 bg-white shadow-sm z-10">
-        <h1 className="font-bold text-2xl text-slate-800 tracking-tight">Report Generator</h1>
-        <p className="text-xs text-slate-400 mt-0.5">Select a report type to begin filtering data.</p>
+      <div className="px-8 pt-6 pb-4 bg-white shadow-sm z-10 flex items-center gap-3">
+        {onBack && (
+          <button onClick={onBack} className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all cursor-pointer">
+            <ArrowLeft size={18} />
+          </button>
+        )}
+        <div>
+          <h1 className="font-bold text-2xl text-slate-800 tracking-tight">Report Generator</h1>
+          <p className="text-xs text-slate-400 mt-0.5">Select a report type to begin filtering data.</p>
+        </div>
       </div>
       <div className="p-8 flex flex-col gap-6 w-full max-w-[1600px] flex-1 mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -480,11 +513,13 @@ const ReportHome = ({ onSelectTrack }) => {
   );
 };
 
-//  VIEW: PROFESSOR DIRECTORY 
-const ReportProfessors = ({ onBack, onSelectProf }) => {
+// ==========================================
+// VIEW: PROFESSOR DIRECTORY 
+// ==========================================
+const ReportProfessors = ({ onBack, onSelectProf, sections = sectionsData }) => {
   const profs = useMemo(() => {
     const allProfs = [];
-    sectionsData.forEach(sec => {
+    sections.forEach(sec => {
       const blocks = sec.classes || sec.schedules || [];
       blocks.forEach(b => {
         const name = b.profName || b.instructorName;
@@ -492,7 +527,7 @@ const ReportProfessors = ({ onBack, onSelectProf }) => {
       });
     });
     return [...new Set(allProfs)].sort();
-  }, []);
+  }, [sections]);
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -502,7 +537,7 @@ const ReportProfessors = ({ onBack, onSelectProf }) => {
       </div>
       <div className="p-8 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 w-full max-w-[1600px] mx-auto">
         {profs.map((prof, idx) => (
-          <button key={idx} onClick={() => onSelectProf(prof)} className="p-5 bg-white rounded-xl border border-slate-200 hover:border-[#1C6100] transition-all shadow-sm active:scale-95 text-left font-bold text-slate-800 group">
+          <button key={idx} onClick={() => onSelectProf(prof)} className="p-5 bg-white rounded-xl border border-slate-200 hover:border-[#1C6100] transition-all shadow-sm active:scale-95 text-left font-bold text-slate-800 group cursor-pointer">
             <span className="group-hover:text-[#1C6100] transition-colors">{prof}</span>
           </button>
         ))}
@@ -511,25 +546,27 @@ const ReportProfessors = ({ onBack, onSelectProf }) => {
   );
 };
 
-//  VIEW: PROFESSOR SUBJECTS 
-const ReportProfSubjects = ({ profContext, onBack, onSelectSubject }) => {
+// ==========================================
+// VIEW: PROFESSOR SUBJECTS 
+// ==========================================
+const ReportProfSubjects = ({ profContext, onBack, onSelectSubject, sections = sectionsData, students = studentsData, subjectsList = subjectsData }) => {
   const subjects = useMemo(() => {
     const subs = [];
-    sectionsData.forEach(sec => {
+    sections.forEach(sec => {
       const blocks = sec.classes || sec.schedules || [];
       blocks.forEach(b => {
         const name = b.profName || b.instructorName;
         if (name === profContext && !subs.find(s => s.code === b.subjectCode)) {
-          const info = subjectsData.find(x => x.subjectCode === b.subjectCode);
+          const info = subjectsList.find(x => x.subjectCode === b.subjectCode);
           
           // First, find all sections this specific professor handles for this specific subject
-          const profSections = sectionsData.filter(s => {
+          const profSections = sections.filter(s => {
             const sBlocks = s.classes || s.schedules || [];
             return sBlocks.some(sb => sb.subjectCode === b.subjectCode && (sb.profName === profContext || sb.instructorName === profContext));
           }).map(s => s.sectionName);
 
           // Then count how many students from those specific sections are actively enrolled in it
-          const count = studentsData.filter(s => {
+          const count = students.filter(s => {
             if (!profSections.includes(s.section)) return false; 
             const enrolled = s.advisedSubjects || s.enrolledSubjects || [];
             return enrolled.some(sub => sub.subjectId === b.subjectCode || sub.subject_id === b.subjectCode || sub.subjectCode === b.subjectCode);
@@ -537,7 +574,7 @@ const ReportProfSubjects = ({ profContext, onBack, onSelectSubject }) => {
 
           subs.push({ 
             code: b.subjectCode, 
-            title: info ? info.subjectTitle : b.title, 
+            title: info ? info.subjectTitle : (b.title || b.subjectName || b.subjectCode), 
             prof: profContext, 
             studentCount: count 
           });
@@ -545,7 +582,7 @@ const ReportProfSubjects = ({ profContext, onBack, onSelectSubject }) => {
       });
     });
     return subs;
-  }, [profContext]);
+  }, [profContext, sections, students, subjectsList]);
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -573,8 +610,10 @@ const ReportProfSubjects = ({ profContext, onBack, onSelectSubject }) => {
   );
 };
 
-//  MAIN PARENT COMPONENT 
-export default function Report() {
+// ==========================================
+// MAIN PARENT COMPONENT 
+// ==========================================
+export default function Report({ navigateToTab }) {
   const [currentView, setCurrentView] = useState("home"); 
   const [reportType, setReportType] = useState(null); 
   
@@ -583,23 +622,42 @@ export default function Report() {
   const [subjectContext, setSubjectContext] = useState(null);
   const [profContext, setProfContext] = useState(null);
   
-  // This is the missing state variable that caused the crash
   const [activeSemester, setActiveSemester] = useState("1st");
+  const [activeAcademicYear, setActiveAcademicYear] = useState("2026-2027");
   const [isDbLoaded, setIsDbLoaded] = useState(false);
+
+  const [schedulesList, setSchedulesList] = useState([]);
+  const [studentsList, setStudentsList] = useState([]);
+  const [subjectsList, setSubjectsList] = useState([]);
 
   useEffect(() => {
     Promise.all([
-      fetch("${PRE_ADVISING_API}/schedules").then(res => res.json()),
-      fetch("${PRE_ADVISING_API}/students").then(res => res.json()),
-      fetch("${PRE_ADVISING_API}/subjects").then(res => res.json()),
-      fetch("${PRE_ADVISING_API}/settings").then(res => res.json())
+      fetch(`${PRE_ADVISING_API}/schedules`).then(res => res.json()),
+      fetch(`${PRE_ADVISING_API}/students`).then(res => res.json()),
+      fetch(`${PRE_ADVISING_API}/subjects`).then(res => res.json()),
+      fetch(`${PRE_ADVISING_API}/settings`).then(res => res.json())
     ]).then(([schedules, students, subjects, settings]) => {
-      sectionsData.length = 0; sectionsData.push(...schedules);
-      studentsData.length = 0; studentsData.push(...students);
-      subjectsData.length = 0; subjectsData.push(...subjects);
+      const validSchedules = Array.isArray(schedules) ? schedules : [];
+      const validStudents = Array.isArray(students) ? students : [];
+      const validSubjects = Array.isArray(subjects) ? subjects : [];
+
+      sectionsData.length = 0; sectionsData.push(...validSchedules);
+      studentsData.length = 0; studentsData.push(...validStudents);
+      subjectsData.length = 0; subjectsData.push(...validSubjects);
+
+      setSchedulesList(validSchedules);
+      setStudentsList(validStudents);
+      setSubjectsList(validSubjects);
       
-      if (settings && settings.activeSemesterShort) {
-        setActiveSemester(settings.activeSemesterShort);
+      if (settings) {
+        if (settings.activeSemesterShort) {
+          setActiveSemester(settings.activeSemesterShort);
+        }
+        if (settings.schoolYear) {
+          setActiveAcademicYear(settings.schoolYear);
+        } else if (settings.academicYear) {
+          setActiveAcademicYear(settings.academicYear);
+        }
       }
       
       setIsDbLoaded(true);
@@ -614,10 +672,13 @@ export default function Report() {
   return (
     <div className="font-RB w-full bg-slate-50 min-h-screen flex flex-col print:pl-0 print:bg-white">
       {currentView === "home" && (
-        <ReportHome onSelectTrack={(type) => {
-          setReportType(type);
-          setCurrentView(type === "professor" ? "professors" : "directory");
-        }} />
+        <ReportHome 
+          onSelectTrack={(type) => {
+            setReportType(type);
+            setCurrentView(type === "professor" ? "professors" : "directory");
+          }} 
+          onBack={navigateToTab ? () => navigateToTab('pre-advising-dashboard') : null}
+        />
       )}
 
       {currentView === "directory" && (
@@ -629,6 +690,7 @@ export default function Report() {
 
       {currentView === "professors" && (
         <ReportProfessors 
+          sections={schedulesList}
           onBack={() => setCurrentView("home")} 
           onSelectProf={(prof) => { setProfContext(prof); setCurrentView("prof_subjects"); }} 
         />
@@ -638,6 +700,8 @@ export default function Report() {
         <ReportSections 
           yearContext={yearContext} 
           reportType={reportType} 
+          sections={schedulesList}
+          students={studentsList}
           onBack={() => setCurrentView("directory")} 
           onSelectSection={(secName) => {
             setSectionContext(secName);
@@ -649,6 +713,9 @@ export default function Report() {
       {currentView === "prof_subjects" && (
         <ReportProfSubjects 
           profContext={profContext} 
+          sections={schedulesList}
+          students={studentsList}
+          subjectsList={subjectsList}
           onBack={() => setCurrentView("professors")} 
           onSelectSubject={(subData) => {
             setSubjectContext(subData); setCurrentView("students");
@@ -661,6 +728,9 @@ export default function Report() {
           yearContext={yearContext} 
           sectionContext={sectionContext} 
           activeSemester={activeSemester} 
+          sections={schedulesList}
+          students={studentsList}
+          subjectsList={subjectsList}
           onBack={() => setCurrentView("sections")} 
           onSelectSubject={(subData) => {
             setSubjectContext(subData); setCurrentView("students");
@@ -675,6 +745,9 @@ export default function Report() {
           subjectContext={subjectContext} 
           profContext={profContext}
           reportType={reportType}
+          activeAcademicYear={activeAcademicYear}
+          students={studentsList}
+          sections={schedulesList}
           onBack={() => setCurrentView(reportType === "section" ? "sections" : reportType === "professor" ? "prof_subjects" : "subjects")} 
         />
       )}

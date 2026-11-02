@@ -6,6 +6,7 @@ import math
 import io
 from datetime import datetime, timezone
 from functools import cmp_to_key
+from typing import Any, List, Optional
 import pandas as pd
 from fastapi import FastAPI, HTTPException, UploadFile, File, Body, Path, Form
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -35,18 +36,126 @@ def safe_float(val):
     except (ValueError, TypeError):
         return 0.0
 
-# Aggressively sanitize MongoDB documents by deleting the _id field
-# and ensuring the object is a standard Python dictionary.
+# Aggressively sanitize MongoDB documents by converting ObjectId to string
+# and ensuring the object is a standard, JSON-serializable Python dictionary.
 def serialize_mongo_doc(data):
     if isinstance(data, list):
         return [serialize_mongo_doc(item) for item in data]
     elif isinstance(data, dict):
         sanitized = dict(data)
         if "_id" in sanitized:
-            del sanitized["_id"]
+            sanitized["_id"] = str(sanitized["_id"])
         return {k: serialize_mongo_doc(v) for k, v in sanitized.items()}
+    elif isinstance(data, ObjectId):
+        return str(data)
     return data
 
+def parse_year_int(val):
+    if val is None:
+        return 1
+    match = re.search(r"\d+", str(val))
+    return int(match.group(0)) if match else 1
+
+def format_section_name(program: str, year: Any, section: str) -> str:
+    """
+    Defensively formats section string as 'PROGRAM-YEARSECTION' (e.g. 'BSIT-1A').
+    Prevents year stacking bugs like 'BSIT-11A'.
+    """
+    s = str(section or "A").strip()
+    if "-" in s:
+        return s
+    y_str = str(parse_year_int(year))
+    p_str = str(program or "BSIT").strip()
+    if "-" in p_str:
+        p_str = p_str.split("-")[0].strip() or "BSIT"
+    
+    clean_sec = s
+    if clean_sec.startswith(y_str) and len(clean_sec) > len(y_str):
+        clean_sec = clean_sec[len(y_str):]
+    return f"{p_str}-{y_str}{clean_sec}"
+
+def get_applicant_id_variants(applicant_id: Any) -> list:
+    """
+    Generates both 'A-2026-0001' and '2026-0001' variants to prevent prefix mismatch drops.
+    """
+    clean_id = str(applicant_id or "").strip()
+    if not clean_id:
+        return []
+    if clean_id.startswith("A-"):
+        return [clean_id, clean_id[2:]]
+    return [f"A-{clean_id}", clean_id]
+
+async def sanitize_advising_payload(payload: dict, settings_doc: Optional[dict] = None) -> dict:
+    """
+    Defensive guard ensuring all required downstream Enrollment fields
+    (year, semester, section, targetSection) are populated before saving to db.advisingrecords.
+    """
+    if not payload:
+        return payload
+
+    payload = dict(payload)
+    payload.pop("_id", None)
+
+    current_time = datetime.now(timezone.utc)
+    payload["updatedAt"] = current_time
+
+    applicant_id = str(payload.get("applicantID") or payload.get("studentNumber") or "").strip()
+    if not payload.get("advisingId"):
+        payload["advisingId"] = f"adv_{applicant_id}_{int(current_time.timestamp())}"
+
+    default_sem = "1st"
+    if settings_doc:
+        default_sem = str(settings_doc.get("semester", "1st Semester")).split(" ")[0]
+
+    # Look up student/applicant if year, section, or program is missing
+    student_doc = None
+    if not payload.get("year") or not payload.get("section"):
+        student_doc = await db.students.find_one({"$or": [{"studentNumber": applicant_id}, {"student_id": applicant_id}]})
+        if not student_doc:
+            variants = get_applicant_id_variants(applicant_id)
+            student_doc = await db.applicants.find_one({"$or": [{"applicantId": v} for v in variants]})
+
+    fallback_year = "1"
+    fallback_section = "A"
+    fallback_program = "BSIT"
+    if student_doc:
+        fallback_year = str(student_doc.get("year") or student_doc.get("yearLevel") or "1")
+        fallback_section = str(student_doc.get("section") or "A")
+        prog = str(student_doc.get("course") or student_doc.get("program") or student_doc.get("activeProgram") or "BSIT")
+        fallback_program = prog.split("-")[0].strip() if "-" in prog else prog
+
+    year_val = str(payload.get("year") or fallback_year).strip()
+    sem_val = str(payload.get("semester") or default_sem).strip()
+    sec_raw = str(payload.get("section") or fallback_section).strip()
+    
+    clean_sec = format_section_name(fallback_program, year_val, sec_raw)
+
+    payload["year"] = year_val
+    payload["semester"] = sem_val
+    payload["section"] = clean_sec
+    payload["enrollmentStatus"] = payload.get("enrollmentStatus") or "advised"
+
+    # Sanitize advisedSubjects for irregular placements
+    advised_subjects = payload.get("advisedSubjects", [])
+    if isinstance(advised_subjects, list):
+        sanitized_subjects = []
+        for sub in advised_subjects:
+            if isinstance(sub, dict):
+                sub_dict = dict(sub)
+                if not sub_dict.get("targetYear"):
+                    sub_dict["targetYear"] = year_val
+                if not sub_dict.get("targetSection"):
+                    sub_dict["targetSection"] = clean_sec
+                if not sub_dict.get("targetSemester"):
+                    sub_dict["targetSemester"] = sem_val
+                if not sub_dict.get("targetProgram"):
+                    sub_dict["targetProgram"] = fallback_program
+                sanitized_subjects.append(sub_dict)
+            else:
+                sanitized_subjects.append(sub)
+        payload["advisedSubjects"] = sanitized_subjects
+
+    return payload
 
 
 # --- API ROUTES ---
@@ -61,7 +170,7 @@ async def get_schedules():
             safe_academic_year = s.get("academicYear", "").replace("-", " - ") if s.get("academicYear") else ""
             
             section_name = s.get("sectionName") or (
-                f"{s.get('program')}-{s.get('year')}{s.get('section')}" 
+                format_section_name(s.get('program', 'BSIT'), s.get('year', 1), s.get('section', 'A'))
                 if s.get("program") and s.get("year") and s.get("section") else ""
             )
             
@@ -78,18 +187,18 @@ async def get_schedules():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def parse_year_int(val):
-    if val is None:
-        return 1
-    match = re.search(r"\d+", str(val))
-    return int(match.group(0)) if match else 1
-
 @router.get("/students")
 async def get_students():
     try:
         students_cursor, applicants_cursor, advising_cursor, grades_cursor, curr_cursor, settings, sched_cursor = await asyncio.gather(
             db.students.find({}).to_list(None),
-            db.applicants.find({"admissionStatus": {"$in": ["Admitted", "Advising Completed"]}}).to_list(None),
+            # Defensive Admission ingestion query supporting both admissionStatus and slotStatus (case-insensitive)
+            db.applicants.find({
+                "$or": [
+                    {"admissionStatus": {"$in": ["Admitted", "admitted", "Confirmed", "confirmed", "Advising Completed", "advising completed"]}},
+                    {"slotStatus": {"$in": ["Admitted", "admitted"]}}
+                ]
+            }).to_list(None),
             db.advisingrecords.find({}).to_list(None),
             db.grades.find({}).to_list(None),
             db.curriculums.find({}).to_list(None),
@@ -123,17 +232,19 @@ async def get_students():
             if not app_id:
                 continue
 
-            program_full = str(a.get("activeProgram") or a.get("firstChoice") or "BSIT")
-            course_code = program_full.split("-")[-1].strip() if "-" in program_full else "BSIT"
+            # Fix: extract course code using split("-")[0] instead of split("-")[-1]
+            program_full = str(a.get("activeProgram") or a.get("firstChoice") or "BSIT").strip()
+            course_code = program_full.split("-")[0].strip() if "-" in program_full else (program_full or "BSIT")
 
             applicant_type = str(a.get("applicantType") or "SHS Graduate")
             is_transferee = applicant_type.strip().lower() == "transferee"
 
+            raw_sec = str(a.get("section") or "A").strip()
             a["studentNumber"] = str(app_id)
             a["course"] = course_code
             a["year"] = "1"
             a["yearLevel"] = 1
-            a["section"] = str(a.get("section") or "A")
+            a["section"] = format_section_name(course_code, 1, raw_sec)
             a["status"] = "Irregular" if is_transferee else "Regular"
             a["isApplicant"] = True
             unified_users.append(a)
@@ -146,13 +257,16 @@ async def get_students():
             if not student_num:
                 continue
 
+            # Normalize applicant ID search across variants (with and without 'A-' prefix)
+            id_variants = set(get_applicant_id_variants(student_num) + [student_num])
+
             advising_data = [
                 r for r in advising_cursor
-                if str(r.get("applicantID") or r.get("studentNumber") or "") == student_num
+                if str(r.get("applicantID") or r.get("studentNumber") or "").strip() in id_variants
             ]
             academic_data = [
                 r for r in grades_cursor
-                if str(r.get("studentNumber") or r.get("student_id") or "") == student_num
+                if str(r.get("studentNumber") or r.get("student_id") or "").strip() in id_variants
             ]
 
             flat_grades = []
@@ -205,14 +319,10 @@ async def get_students():
             current_advised_subjects = advising_data[0].get("advisedSubjects", []) if advising_data else []
 
             raw_status = str(student.get("status") or "Regular")
-
             current_status = "Regular" if raw_status.lower() in ["regular", "block"] else raw_status
-
             student["status"] = current_status
 
             demotion_reason = student.get("demotionReason")
-
-
 
             if current_status.lower() == "regular":
                 is_demoted = False
@@ -234,7 +344,7 @@ async def get_students():
                     program_str = str(student.get("course") or student.get("program") or "BSIT")
                     formatted_year = parse_year_int(student.get("year") or student.get("yearLevel") or 1)
                     section_str = str(student.get("section") or "A")
-                    target_section_str = section_str if "-" in section_str else f"{program_str}-{formatted_year}{section_str}"
+                    target_section_str = format_section_name(program_str, formatted_year, section_str)
 
                     target_block = next(
                         (s for s in active_schedules if f"{s.get('program')}-{s.get('year')}{s.get('section')}" == target_section_str),
@@ -263,7 +373,7 @@ async def get_students():
             formatted_year = parse_year_int(student.get("year") or student.get("yearLevel") or 1)
             program_str = str(student.get("course") or student.get("program") or "BSIT")
             section_str = str(student.get("section") or "A")
-            full_section_string = section_str if "-" in section_str else f"{program_str}-{formatted_year}{section_str}"
+            full_section_string = format_section_name(program_str, formatted_year, section_str)
 
             safe_student = {
                 k: v for k, v in student.items()
@@ -310,6 +420,8 @@ async def get_curriculum_blueprint(program: str, effectiveYear: str, yearLevel: 
             
         targeted_subjects = await db.subjects.find({"subjectCode": {"$in": subject_codes}}).to_list(None)
         return [serialize_mongo_doc(s) for s in targeted_subjects]
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error fetching blueprint.")
 
@@ -322,9 +434,7 @@ async def get_subjects():
         for curr in curriculums:
             year_level = curr.get("year", "1st")
             
-            # Loop through the nested array to capture the semester context
             for sem in curr.get("semesters", []):
-                # Convert the integer to match the frontend's ACTIVE_SEMESTER_SHORT format
                 target_semester = "1st" if sem.get("semester") == 1 else "2nd"
                 
                 for sub in sem.get("subjects", []):
@@ -355,10 +465,14 @@ async def save_schedule(payload: dict = Body(...)):
         if not isinstance(classes, list):
             raise HTTPException(status_code=400, detail="Invalid schedule data format.")
 
-        has_dirty = any(block.get("isRequestedChange") or block.get("isGhostOriginal") for block in classes)
-        if has_dirty:
-            print(f"[SECURITY] Blocked attempt to save dirty preview data for {section_name}")
-            raise HTTPException(status_code=403, detail="Cannot save schedule. The payload contains unapproved preview data.")
+        # Clean preview and ghost flags upon explicit save to prevent permanent builder lockouts
+        clean_classes = []
+        for block in classes:
+            if block.get("isGhostOriginal"):
+                continue
+            clean_block = {k: v for k, v in block.items() if k not in ["isRequestedChange", "isGhostOriginal"]}
+            clean_classes.append(clean_block)
+        classes = clean_classes
 
         parts = section_name.split("-")
         program = parts[0]
@@ -390,6 +504,8 @@ async def save_schedule(payload: dict = Body(...)):
         )
 
         return {"message": "Schedule successfully saved.", "data": serialize_mongo_doc(updated_schedule)}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -424,6 +540,8 @@ async def clear_schedule(payload: dict = Body(...)):
         )
 
         return {"message": "Schedule successfully cleared from database."}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error while clearing the schedule.")
 
@@ -444,8 +562,6 @@ async def credit_transferee_subject(payload: dict = Body(...)):
         if not student_number or not subject_code:
             raise HTTPException(status_code=400, detail="Missing student number or subject code.")
 
-        # Disguise the credited subject using the EXACT schema expected by the Grading system
-        # We use None (null in DB) for grades so we don't forge data, and explicitly label it "Credited"
         credit_record = {
             "student_id": student_number,
             "subject_code": subject_code,
@@ -463,19 +579,20 @@ async def credit_transferee_subject(payload: dict = Body(...)):
                 "prefinal": None,
                 "raw_final": None,
                 "final": None,
-                "equivalent": "Credited"  # Explicitly states this is a credited subject, no math involved
+                "equivalent": "Credited"
             },
-            "status": "credited",  # We keep this flag so our Gatekeeper can still fast-track the prerequisite check
+            "status": "credited",
             "updated_at": datetime.now(timezone.utc)
         }
 
-        # Save to MongoDB using the real schema's snake_case identifiers
         await db.grades.update_one(
             {"student_id": student_number, "subject_code": subject_code, "section": "TRANSFEREE"},
             {"$set": credit_record},
             upsert=True
         )
         return {"message": f"Subject {subject_code} credited for {student_number}."}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -489,7 +606,9 @@ async def save_advising(payload: dict = Body(...)):
         if not payload.get("advisedSubjects"):
             raise HTTPException(status_code=400, detail="Cannot advise student: advisedSubjects array is missing or empty.")
 
-        # 1. Upsert the advised subjects into advisingrecords (with manual timestamps)
+        settings_doc = await db.systemsettings.find_one({"systemName": "BTECH - IITI Pre-Admission System"})
+        payload = await sanitize_advising_payload(payload, settings_doc)
+
         current_time = datetime.now(timezone.utc)
         payload["updatedAt"] = current_time
         
@@ -502,14 +621,14 @@ async def save_advising(payload: dict = Body(...)):
             upsert=True
         )
 
-        # 2. Update enrollment status in the correct collection
         applicant_id = payload.get("applicantID")
-        enrollment_status = payload.get("enrollmentStatus")
+        enrollment_status = payload.get("enrollmentStatus") or "advised"
         is_applicant = payload.get("isApplicant", False)
         
         if is_applicant:
+            variants = get_applicant_id_variants(applicant_id)
             await db.applicants.update_one(
-                {"applicantId": applicant_id},
+                {"$or": [{"applicantId": v} for v in variants]},
                 {"$set": {
                     "enrollmentStatus": enrollment_status, 
                     "admissionStatus": "Advising Completed"
@@ -525,6 +644,8 @@ async def save_advising(payload: dict = Body(...)):
             )
 
         return {"message": "Successfully advised and status updated!"}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"\n[FATAL DB ERROR]: {e}")
         raise HTTPException(status_code=500, detail="Failed to process advising record.")
@@ -536,26 +657,31 @@ async def batch_save_advising(payload: dict = Body(...)):
         if not isinstance(students, list) or len(students) == 0:
             raise HTTPException(status_code=400, detail="No students provided for batch processing.")
 
+        settings_doc = await db.systemsettings.find_one({"systemName": "BTECH - IITI Pre-Admission System"})
+        
         advising_ops = []
         student_ops = []
         applicant_ops = []
 
-        for s in students:
+        for raw_s in students:
+            s = await sanitize_advising_payload(raw_s, settings_doc)
             advising_ops.append(UpdateOne({"advisingId": s.get("advisingId")}, {"$set": s}, upsert=True))
             
-            # Route the status update to the correct collection
+            app_id = s.get("applicantID")
+            enroll_st = s.get("enrollmentStatus") or "advised"
+
             if s.get("isApplicant"):
+                variants = get_applicant_id_variants(app_id)
                 applicant_ops.append(UpdateOne(
-                    {"applicantId": s.get("applicantID")}, 
-                    {"$set": {"enrollmentStatus": s.get("enrollmentStatus"), "admissionStatus": "Advising Completed"}}
+                    {"$or": [{"applicantId": v} for v in variants]}, 
+                    {"$set": {"enrollmentStatus": enroll_st, "admissionStatus": "Advising Completed"}}
                 ))
             else:
                 student_ops.append(UpdateOne(
-                    {"$or": [{"studentNumber": s.get("applicantID")}, {"student_id": s.get("applicantID")}]}, 
-                    {"$set": {"enrollmentStatus": s.get("enrollmentStatus"), "enrollment_status": s.get("enrollmentStatus")}}
+                    {"$or": [{"studentNumber": app_id}, {"student_id": app_id}]}, 
+                    {"$set": {"enrollmentStatus": enroll_st, "enrollment_status": enroll_st}}
                 ))
 
-        # Execute only the collections that actually have operations
         tasks = [db.advisingrecords.bulk_write(advising_ops)]
         if student_ops: 
             tasks.append(db.students.bulk_write(student_ops))
@@ -565,6 +691,8 @@ async def batch_save_advising(payload: dict = Body(...)):
         await asyncio.gather(*tasks)
 
         return {"message": f"Successfully batch-advised {len(students)} students!"}
+    except HTTPException:
+        raise
     except Exception as e:
         print("Batch save failed:", e)
         raise HTTPException(status_code=500, detail="Failed to process batch advising.")
@@ -581,23 +709,26 @@ async def get_draft_cart(student_id: str):
             {"$or": [{"studentNumber": student_id}, {"student_id": student_id}, {"studentId": student_id}]}
         )
         if not student:
-            student = await db.applicants.find_one({"applicantId": student_id})
+            variants = get_applicant_id_variants(student_id)
+            student = await db.applicants.find_one({"$or": [{"applicantId": v} for v in variants]})
             if not student:
                 raise HTTPException(status_code=404, detail="Student not found.")
-            program_full = str(student.get("activeProgram") or student.get("firstChoice") or "BSIT")
-            s_program = program_full.split("-")[-1].strip() if "-" in program_full else "BSIT"
+            
+            program_full = str(student.get("activeProgram") or student.get("firstChoice") or "BSIT").strip()
+            s_program = program_full.split("-")[0].strip() if "-" in program_full else (program_full or "BSIT")
             s_year = "1"
-            s_section = str(student.get("section") or "A")
+            s_section = str(student.get("section") or "A").strip()
         else:
             s_year = str(parse_year_int(student.get("year") or student.get("yearLevel") or student.get("year_level") or "2"))
-            s_program = str(student.get("program") or student.get("course") or "BSIT")
-            s_section = str(student.get("section") or "A")
-            if "-" in s_section:
-                s_section = s_section.split("-")[-1][-1]
+            prog = str(student.get("program") or student.get("course") or "BSIT").strip()
+            s_program = prog.split("-")[0].strip() if "-" in prog else (prog or "BSIT")
+            s_section = str(student.get("section") or "A").strip()
 
+        id_variants = set(get_applicant_id_variants(student_id) + [student_id])
         student_records = await db.grades.find(
-            {"$or": [{"studentNumber": student_id}, {"student_id": student_id}]}
+            {"$or": [{"studentNumber": {"$in": list(id_variants)}}, {"student_id": {"$in": list(id_variants)}}]}
         ).to_list(None)
+        
         passed_subjects = set()
         failed_subjects = set()
 
@@ -634,7 +765,8 @@ async def get_draft_cart(student_id: str):
                 else:
                     failed_subjects.add(subj_code)
 
-        passed_subjects = passed_subjects - failed_subjects
+        # Fix: Retake rule - passing a retake clears the prior failure
+        failed_subjects = failed_subjects - passed_subjects
 
         final_subjects = []
         added_codes = set()
@@ -648,7 +780,7 @@ async def get_draft_cart(student_id: str):
             added_codes.add(code)
 
         all_active_schedules = await db.schedules.find({"semester": active_sem_short, "academicYear": db_academic_year}).to_list(None)
-        target_section_str = f"{s_program}-{s_year}{s_section}"
+        target_section_str = format_section_name(s_program, s_year, s_section)
         
         section_schedule = next((s for s in all_active_schedules if f"{s.get('program')}-{s.get('year')}{s.get('section')}" == target_section_str), None)
 
@@ -676,6 +808,8 @@ async def get_draft_cart(student_id: str):
                 added_codes.add(code)
 
         return {"subjects": final_subjects}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error generating draft cart.")
 
@@ -814,8 +948,32 @@ async def auto_slot(payload: dict = Body(...)):
             effective_lab = 1.5
             effective_dur = 0
 
+        # Defensive parser: accepts minutes (int/float) OR string timestamps like '07:00 AM' / '13:30'
         def time_to_decimal(minutes):
-            return float(minutes) / 60
+            if minutes is None:
+                return 0.0
+            if isinstance(minutes, (int, float)):
+                return float(minutes) / 60.0
+            
+            s = str(minutes).strip().upper()
+            try:
+                return float(s) / 60.0
+            except ValueError:
+                pass
+            
+            time_match = re.match(r"^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$", s)
+            if time_match:
+                hours = int(time_match.group(1))
+                mins = int(time_match.group(2))
+                meridiem = time_match.group(3)
+                if meridiem:
+                    if meridiem == "PM" and hours < 12:
+                        hours += 12
+                    elif meridiem == "AM" and hours == 12:
+                        hours = 0
+                return hours + (mins / 60.0)
+            
+            return 0.0
 
         def check_overlap(startA, endA, startB, endB):
             return startA < endB and startB < endA
@@ -1095,6 +1253,8 @@ async def import_external_schedules(activeTerm: str = Form("1st Semester 2026-20
 
         result = await db.externalschedules.insert_many(schedules_to_insert)
         return {"message": f"Successfully imported {len(result.inserted_ids)} external schedules!", "insertedCount": len(result.inserted_ids)}
+    except HTTPException:
+        raise
     except Exception as e:
         print("[IMPORT ERROR]:", e)
         raise HTTPException(status_code=500, detail="Failed to process the uploaded file.")
@@ -1110,21 +1270,31 @@ async def get_external_schedules():
 @router.delete("/external-schedules/{id}")
 async def delete_external_schedule(id: str):
     try:
+        if not ObjectId.is_valid(id):
+            raise HTTPException(status_code=400, detail="Invalid schedule ID format.")
         await db.externalschedules.delete_one({"_id": ObjectId(id)})
         return {"message": "Schedule removed successfully."}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to delete schedule.")
 
 @router.put("/external-schedules/{id}")
 async def update_external_schedule(id: str, payload: ExternalSchedule):
     try:
+        if not ObjectId.is_valid(id):
+            raise HTTPException(status_code=400, detail="Invalid schedule ID format.")
         payload_data = payload.model_dump(exclude_none=True)
         updated = await db.externalschedules.find_one_and_update(
             {"_id": ObjectId(id)},
             {"$set": payload_data},
             return_document=ReturnDocument.AFTER
         )
+        if not updated:
+            raise HTTPException(status_code=404, detail="Schedule not found.")
         return {"message": "Schedule updated successfully.", "data": serialize_mongo_doc(updated)}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to update schedule.")
 
@@ -1142,9 +1312,16 @@ async def get_schedule_requests():
 @router.patch("/schedule-requests/{id}")
 async def update_schedule_request(id: str, payload: dict = Body(...)):
     try:
+        if not ObjectId.is_valid(id):
+            raise HTTPException(status_code=400, detail="Invalid schedule request ID format.")
+
         status = payload.get("status")
         if status not in ['approved', 'rejected', 'pending']:
             raise HTTPException(status_code=400, detail="Invalid status value.")
+
+        req_doc = await db.schedulerequests.find_one({"_id": ObjectId(id)})
+        if not req_doc:
+            raise HTTPException(status_code=404, detail="Schedule request not found.")
 
         updated = await db.schedulerequests.find_one_and_update(
             {"_id": ObjectId(id)},
@@ -1152,10 +1329,41 @@ async def update_schedule_request(id: str, payload: dict = Body(...)):
             return_document=ReturnDocument.AFTER
         )
 
-        if not updated:
-            raise HTTPException(status_code=404, detail="Schedule request not found.")
+        # Apply schedule change when approved
+        if status == 'approved':
+            proposed = req_doc.get("schedule") or {}
+            target_sid = req_doc.get("scheduleId")
+            
+            # Clean preview flags
+            proposed_classes = proposed.get("classes") or []
+            clean_classes = []
+            for c in proposed_classes:
+                if c.get("isGhostOriginal"):
+                    continue
+                clean_item = {k: v for k, v in c.items() if k not in ["isRequestedChange", "isGhostOriginal"]}
+                clean_classes.append(clean_item)
+
+            sched_query = {}
+            if target_sid and ObjectId.is_valid(str(target_sid)):
+                sched_query = {"_id": ObjectId(str(target_sid))}
+            elif proposed.get("program") and proposed.get("year") and proposed.get("section"):
+                sched_query = {
+                    "program": proposed.get("program"),
+                    "year": str(proposed.get("year")),
+                    "section": str(proposed.get("section"))
+                }
+            
+            if sched_query:
+                update_fields = {"classes": clean_classes, "updated_at": datetime.now(timezone.utc)}
+                if proposed.get("academicYear"):
+                    update_fields["academicYear"] = proposed.get("academicYear")
+                if proposed.get("semester"):
+                    update_fields["semester"] = proposed.get("semester")
+                await db.schedules.update_one(sched_query, {"$set": update_fields})
 
         return {"message": f"Request successfully marked as {status}", "request": serialize_mongo_doc(updated)}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error.")
 
@@ -1165,7 +1373,8 @@ async def get_student_grades_bridge(student_id: str):
         # 1. Locate the Student or Applicant
         student = await db.students.find_one({"$or": [{"studentNumber": student_id}, {"student_id": student_id}]})
         if not student:
-            student = await db.applicants.find_one({"applicantId": student_id})
+            variants = get_applicant_id_variants(student_id)
+            student = await db.applicants.find_one({"$or": [{"applicantId": v} for v in variants]})
             if not student:
                 return {"success": False, "message": "Student not found"}
             
@@ -1178,7 +1387,10 @@ async def get_student_grades_bridge(student_id: str):
             student["number"] = student.get("studentNumber") or student.get("student_id")
 
         # 2. Fetch Grades
-        student_records = await db.grades.find({"$or": [{"studentNumber": student_id}, {"student_id": student_id}]}).to_list(None)
+        id_variants = set(get_applicant_id_variants(student_id) + [student_id])
+        student_records = await db.grades.find(
+            {"$or": [{"studentNumber": {"$in": list(id_variants)}}, {"student_id": {"$in": list(id_variants)}}]}
+        ).to_list(None)
         
         flat_grades = []
         for record in student_records:
@@ -1206,7 +1418,6 @@ async def get_student_grades_bridge(student_id: str):
                 computed = record.get("computedGrades") or {}
                 raw_snaps = record.get("rawSnapshots") or {}
                 
-                # Use our safe_float helper to prevent ValueError crashes
                 prelim = safe_float(computed.get("prelim") or raw_snaps.get("prelim") or record.get("prelim"))
                 mid = safe_float(computed.get("raw_midterm") or computed.get("midterm") or raw_snaps.get("midterm") or record.get("rawMid"))
                 pre = safe_float(computed.get("raw_prefinal") or computed.get("prefinal") or raw_snaps.get("prefinal") or record.get("rawPre"))
@@ -1238,6 +1449,8 @@ async def get_student_grades_bridge(student_id: str):
                 "grades": flat_grades
             }
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

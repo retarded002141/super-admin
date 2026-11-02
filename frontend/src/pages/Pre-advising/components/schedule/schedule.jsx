@@ -35,6 +35,13 @@ const normalizeSemStr = (sem) => {
   return s;
 };
 
+const normalizeAcademicTerm = (term) =>
+  String(term || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s*-\s*/g, "-")
+    .replace(/\s+/g, " ");
+
 // Setup Localizer for the Calendar
 const localizer = momentLocalizer(moment);
 const DnDCalendar = withDragAndDrop(Calendar);
@@ -439,7 +446,9 @@ const [activeSubjectData, setActiveSubjectData] = useState(null);
         
         setStatusPrompt({ show: true, type: "success", title: "Request Updated", message: `The schedule request has been successfully ${action}.` });
       } else {
-        setStatusPrompt({ show: true, type: "danger", title: "Update Failed", message: "Failed to update request status in the database." });
+        const errData = await res.json().catch(() => ({}));
+        const errMsg = errData.detail || errData.error || "Failed to update request status in the database.";
+        setStatusPrompt({ show: true, type: "danger", title: "Update Failed", message: errMsg });
       }
     } catch (err) {
       console.error(err);
@@ -498,7 +507,8 @@ const [activeSubjectData, setActiveSubjectData] = useState(null);
       }
 
       // Combine standard IT schedules with the newly formatted external schedules
-      setMasterSchedules([...schedules, ...Array.from(extSectionsMap.values())]);
+      const safeSchedules = Array.isArray(schedules) ? schedules : [];
+      setMasterSchedules([...safeSchedules, ...Array.from(extSectionsMap.values())]);
       
       setRoomsData(rooms.length > 0 ? rooms : [
         { roomName: "Computer Lab 1", type: "Laboratory" },
@@ -550,10 +560,15 @@ const [activeSubjectData, setActiveSubjectData] = useState(null);
       const sectionData = masterSchedules.find(d => {
         if (d.sectionName !== selectedSection) return false;
         if (!selectedSemester) return true;
-        const dSem = normalizeSemStr(d.offeredSemester || d.semester);
-        const selSem = normalizeSemStr(selectedSemester);
+        const scheduleTerm = d.offeredSemester || (
+          d.semester && d.academicYear
+            ? `${d.semester} Semester ${d.academicYear}`
+            : ""
+        );
+        const dSem = normalizeAcademicTerm(scheduleTerm);
+        const selSem = normalizeAcademicTerm(selectedSemester);
         return dSem === selSem;
-      }) || masterSchedules.find(d => d.sectionName === selectedSection);
+      });
       const startOfWeek = moment(new Date(2026, 0, 19)).startOf('week').add(1, 'day');
       const daysMap = { "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5 };
 
@@ -764,8 +779,9 @@ const [activeSubjectData, setActiveSubjectData] = useState(null);
         setShowConfirmModal(false);
         setIsEditing(false);
       } else {
-        const errorData = await res.json();
-        setStatusPrompt({ show: true, type: "danger", title: "Error", message: `Error saving schedule: ${errorData.error}` });
+        const errorData = await res.json().catch(() => ({}));
+        const errorMsg = errorData.detail || errorData.error || errorData.message || "Failed to save schedule.";
+        setStatusPrompt({ show: true, type: "danger", title: "Error", message: `Error saving schedule: ${errorMsg}` });
       }
     } catch (err) {
       console.error("Failed to save schedule:", err);
@@ -947,7 +963,7 @@ const [activeSubjectData, setActiveSubjectData] = useState(null);
         yearLevel: selectedYear,
         section: selectedSection,
         subjectCode: ev.subjectCode,
-        subjectTitle: matchedSubject.subjectTitle || (ev.title ? ev.title.split(" - ")[1]?.trim() : ""),
+        subjectTitle: matchedSubject.subjectTitle || (ev.title && ev.title.includes(" - ") ? ev.title.split(" - ")[1]?.trim() : (ev.title || "")),
         instructor: ev.instructor || matchedSubject.instructor || "TBA",
         room: ev.room || "TBA",
         day: moment(ev.start).format('dddd'),
@@ -1000,8 +1016,8 @@ const [activeSubjectData, setActiveSubjectData] = useState(null);
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to fetch slots"); 
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || errorData.error || "Failed to fetch slots"); 
       }
 
       const validSlots = await res.json();
@@ -1143,9 +1159,20 @@ const [activeSubjectData, setActiveSubjectData] = useState(null);
     }
   };
 
-  const availableSections = selectedYear 
-    ? ["A", "B", "C", "D", "E"].map(letter => `BSIT-${selectedYear.charAt(0)}${letter}`)
-    : [];
+  const availableSections = useMemo(() => {
+    if (!selectedYear) return [];
+    const yrNum = selectedYear.charAt(0);
+    const defaultSections = ["A", "B", "C", "D", "E"].map(letter => `BSIT-${yrNum}${letter}`);
+    const dbSections = masterSchedules
+      .map(s => s.sectionName)
+      .filter(name => {
+        if (!name) return false;
+        const parts = name.split("-");
+        if (parts.length > 1) return parts[1].startsWith(yrNum);
+        return name.includes(yrNum);
+      });
+    return [...new Set([...defaultSections, ...dbSections])].sort();
+  }, [selectedYear, masterSchedules]);
 
   const handleYearChange = (e) => {
     setSelectedYear(e.target.value);
