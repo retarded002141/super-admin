@@ -1,6 +1,7 @@
 # routes/record_admin.py
 from fastapi import APIRouter, HTTPException, Body
 from datetime import datetime
+import uuid
 from database import db, student_collection
 
 router = APIRouter(prefix="/api/student/records", tags=["Admin Student Records"])
@@ -42,8 +43,8 @@ def get_all_active_records():
 @router.post("/status-update")
 def update_record_status(payload: dict = Body(...)):
     """
-    Updates request status directly inside student's record_requests array.
-    Keeps the request visible in active table regardless of status.
+    Updates request status inside student's record_requests array and 
+    sends an in-app notification when marked 'Ready for Pickup'.
     """
     s_num = str(payload.get("studentNumber", ""))
     req_id = payload.get("requestId")
@@ -73,16 +74,38 @@ def update_record_status(payload: dict = Body(...)):
     if target_idx == -1:
         raise HTTPException(status_code=404, detail="Record request not found")
 
-    # Update status directly without popping/deleting
+    doc_type = requests[target_idx].get("documentType", "Document")
     requests[target_idx]["status"] = new_status
     requests[target_idx]["updatedAt"] = datetime.utcnow()
 
-    student_collection.update_one(
-        {"_id": student["_id"]},
-        {"$set": {"record_requests": requests}}
-    )
+    # PUSH NOTIFICATION IF READY FOR PICKUP
+    if new_status.lower() == "ready for pickup":
+        new_notification = {
+            "id": f"notif_{uuid.uuid4().hex[:8]}",
+            "title": "Document Request Ready for Pickup",
+            "message": f"Your requested {doc_type} is now ready for pickup at the Registrar's Office.",
+            "meta": "System | Records Request",
+            "time": "Just now",
+            "read": False,
+            "link": "/Records_request",
+            "createdAt": datetime.utcnow().isoformat()
+        }
 
-    return {"message": f"Status updated to {new_status} successfully."}
+        # Update student record_requests and push to notifications array
+        student_collection.update_one(
+            {"_id": student["_id"]},
+            {
+                "$set": {"record_requests": requests},
+                "$push": {"notifications": {"$each": [new_notification], "$position": 0}}
+            }
+        )
+    else:
+        student_collection.update_one(
+            {"_id": student["_id"]},
+            {"$set": {"record_requests": requests}}
+        )
+
+    return {"message": f"Status updated to {new_status} and student notified."}
 
 
 @router.post("/admin-delete")
