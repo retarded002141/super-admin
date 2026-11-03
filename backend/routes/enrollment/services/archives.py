@@ -5,6 +5,14 @@ from .sections import student_identities
 from .schedules import academic_key, section_label, term_key, year_number
 
 
+def _year_range(value):
+    """Extract only the YYYY-YYYY portion from an academic year string."""
+    if not value:
+        return ''
+    m = re.search(r'(\d{4})\s*[-\u2013]\s*(\d{4})', str(value))
+    return f"{m.group(1)}-{m.group(2)}" if m else str(value).strip()
+
+
 def find_classes(student, schedules):
     placements = student_identities(student)
     classes, seen = [], set()
@@ -17,7 +25,7 @@ def find_classes(student, schedules):
         if schedule.get('semester') is not None and term_key(schedule['semester']) != expected_term:
             continue
         sy = academic_key(schedule.get('academicYear', schedule.get('academic_year')))
-        if sy and expected_year and sy != expected_year:
+        if sy and expected_year and _year_range(sy) != _year_range(expected_year):
             continue
         for index, entry in enumerate(schedule.get('classes') or []):
             label = section_label(schedule, entry).upper()
