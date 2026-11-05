@@ -6,6 +6,7 @@ from database import db, student_collection
 
 router = APIRouter(prefix="/api/student/records", tags=["Admin Student Records"])
 
+studentsnotif_col = db["studentsnotif"]
 archived_requests_col = db["archived_requests"]
 
 @router.get("/all")
@@ -44,7 +45,7 @@ def get_all_active_records():
 def update_record_status(payload: dict = Body(...)):
     """
     Updates request status inside student's record_requests array and 
-    sends an in-app notification when marked 'Ready for Pickup'.
+    sends an in-app notification to studentsnotif collection when marked 'Ready for Pickup'.
     """
     s_num = str(payload.get("studentNumber", ""))
     req_id = payload.get("requestId")
@@ -76,34 +77,28 @@ def update_record_status(payload: dict = Body(...)):
 
     doc_type = requests[target_idx].get("documentType", "Document")
     requests[target_idx]["status"] = new_status
-    requests[target_idx]["updatedAt"] = datetime.utcnow()
+    requests[target_idx]["updatedAt"] = datetime.utcnow().isoformat()
 
-    # PUSH NOTIFICATION IF READY FOR PICKUP
+    # Update student record_requests
+    student_collection.update_one(
+        {"_id": student["_id"]},
+        {"$set": {"record_requests": requests}}
+    )
+
+    # Insert into dedicated studentsnotif collection when status is 'Ready for Pickup'
     if new_status.lower() == "ready for pickup":
         new_notification = {
             "id": f"notif_{uuid.uuid4().hex[:8]}",
+            "studentNumber": s_num,
             "title": "Document Request Ready for Pickup",
             "message": f"Your requested {doc_type} is now ready for pickup at the Registrar's Office.",
             "meta": "System | Records Request",
-            "time": "Just now",
             "read": False,
             "link": "/Records_request",
             "createdAt": datetime.utcnow().isoformat()
         }
 
-        # Update student record_requests and push to notifications array
-        student_collection.update_one(
-            {"_id": student["_id"]},
-            {
-                "$set": {"record_requests": requests},
-                "$push": {"notifications": {"$each": [new_notification], "$position": 0}}
-            }
-        )
-    else:
-        student_collection.update_one(
-            {"_id": student["_id"]},
-            {"$set": {"record_requests": requests}}
-        )
+        studentsnotif_col.insert_one(new_notification)
 
     return {"message": f"Status updated to {new_status} and student notified."}
 
