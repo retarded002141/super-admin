@@ -95,7 +95,7 @@ def update_record_status(payload: dict = Body(...)):
             "meta": "System | Records Request",
             "read": False,
             "link": "/Records_request",
-            "createdAt": datetime.utcnow().isoformat()
+            "createdAt": datetime.utcnow().isoformat() + "Z"
         }
 
         studentsnotif_col.insert_one(new_notification)
