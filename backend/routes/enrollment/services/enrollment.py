@@ -8,6 +8,12 @@ from .sections import (SectionGroups, add_student, has_capacity, identity_key,
 TEXT_FIELDS = '''studentNumber firstName lastName middleName section semester status year birthDate contactNumber email gender civilStatus placeOfBirth suffix spouseName permanentHouse permanentStreet permanentBarangay permanentCity permanentProvince permanentZip presentHouse presentStreet presentBarangay presentCity presentProvince presentZip fatherName fatherContact motherName motherContact schoolYear course applicantType elementarySchool elementaryAddress elementaryYear juniorHighSchool juniorHighAddress juniorHighYear seniorHighSchool seniorHighAddress seniorHighYear seniorHighGwa collegeSchool collegeAddress collegeYear password'''.split()
 BOOL_FIELDS = ['disability', 'indigenous', 'soloParent', 'fourPs']
 ARRAY_FIELDS = ['irregularSection', 'irregularYear', 'irregularSubjects']
+EXCLUDED_APPLICANT_FIELDS = {
+    'isSubmitted', 'admissionStatus', 'photo', 'grade11Gwa', 'grade12Gwa', 'seniorHighGwa', 'gwa',
+    'documents', 'examStatus', 'interviewDate', 'interviewLocation',
+    'interviewSession', 'interviewStatus', 'interviewTime', 'isInterviewWaived',
+    'isUnlocked', 'is_submitted', 'sentEmails', 'strand', 'track',
+}
 ALIASES = {'studentNumber': 'student_number', 'firstName': 'first_name', 'lastName': 'last_name',
            'middleName': 'middle_name', 'schoolYear': 'school_year', 'birthDate': 'birth_date',
            'contactNumber': 'contact_number', 'fatherName': 'father_name', 'fatherContact': 'father_contact',
@@ -65,8 +71,13 @@ def active_records(store):
             if text(r.get('enrollmentStatus')).lower() != 'enrolled']
 
 
+def applicant_only_record(record):
+    return text(record.get('year')) == '1' and text(record.get('semester')) == '1st'
+
+
 def mark_advised(store):
-    numbers = {digits(record['applicantID']) for record in active_records(store)}
+    numbers = {digits(record['applicantID']) for record in active_records(store)
+               if not applicant_only_record(record)}
     ids = [student['_id'] for student in store['students'].find({}, {'studentNumber': 1})
            if digits(student.get('studentNumber')) in numbers]
     if ids:
@@ -86,6 +97,13 @@ def find_applicant(store, requested):
 def find_candidate(store, requested):
     records = active_records(store)
     record = next((r for r in records if identifiers_match(r.get('applicantID'), requested)), None)
+    if record and applicant_only_record(record):
+        applicant = find_applicant(store, requested)
+        if applicant:
+            student_number = applicant_identifier(applicant) or text(requested)
+            return {'applicant': applicant, 'advisingRecord': record, 'studentNumber': student_number, 'isAdvisingRecord': False}
+        record = next((r for r in records
+                       if not applicant_only_record(r) and identifiers_match(r.get('applicantID'), requested)), None)
     if record:
         # If the advising record's applicantID contains "A-", only look in applicants, not students
         if 'A-' in text(record.get('applicantID', '')):
@@ -153,11 +171,14 @@ def plan_enrollment(store, found, groups, selected=None, direct=False):
     student_number = found['studentNumber']
     base = deepcopy(applicant) if found.get('isAdvisingRecord') else normalize_student(applicant, imported=True)
     base.pop('_id', None)
+    for field in EXCLUDED_APPLICANT_FIELDS:
+        base.pop(field, None)
     if found.get('isAdvisingRecord'):
         base['studentNumber'] = student_number
     else:
         base.pop('studentNumber', None)
         base['applicantId'] = applicant.get('applicantId', student_number)
+        base['course'] = 'BSIT'
     if record:
         year, term = text(record.get('year')), semester(record.get('semester'))
         irregular = text(record.get('status')).lower() == 'irregular'
@@ -193,7 +214,10 @@ def plan_enrollment(store, found, groups, selected=None, direct=False):
                     irregularSection=meta['irregularSection'], irregularYear=meta['irregularYear'],
                     irregularSubjects=deepcopy(record.get('advisedSubjects') or []))
     else:
-        base.update(year=year, semester=term, status='Block', irregularSection=[], irregularYear=[], irregularSubjects=[])
+        for field in ARRAY_FIELDS:
+            base.pop(field, None)
+        base['subjects'] = deepcopy(record.get('advisedSubjects') or []) if record else []
+        base.update(year=year, semester=term, status='Block')
         chosen = groups.ensure(year, term, selected) if selected else groups.choose(base)
         # Preserve manual placement: selecting a section can expand block capacity.
         chosen['blockCapacity'] = max(number(chosen.get('blockCapacity')), number(chosen.get('blockCount')) + 1)
@@ -251,8 +275,13 @@ def save_enrollment(store, found, plan, groups):
     student = plan['student']
     previous = found['applicant'] if found.get('isAdvisingRecord') else {}
     if found.get('isAdvisingRecord'):
-        fields = {key: student.get(key, []) if key in ARRAY_FIELDS else student.get(key) for key in ['year', 'semester', 'section', 'status', *ARRAY_FIELDS, 'updatedAt']}
-        store['students'].update_one({'_id': previous['_id']}, {'$set': fields})
+        if text(student.get('status')).lower() == 'block':
+            fields = {key: student.get(key) for key in ['year', 'semester', 'section', 'status', 'subjects', 'updatedAt']}
+            unset = {key: '' for key in ARRAY_FIELDS}
+            store['students'].update_one({'_id': previous['_id']}, {'$set': fields, '$unset': unset})
+        else:
+            fields = {key: student.get(key, []) if key in ARRAY_FIELDS else student.get(key) for key in ['year', 'semester', 'section', 'status', *ARRAY_FIELDS, 'updatedAt']}
+            store['students'].update_one({'_id': previous['_id']}, {'$set': fields})
         student['_id'] = previous['_id']
     else:
         student['_id'] = store['students'].insert_one(student).inserted_id

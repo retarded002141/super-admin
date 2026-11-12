@@ -11,6 +11,13 @@ import { getStudentPlacements, studentMatchesFilters } from "../utils/studentDis
 
 const YEAR_OPTIONS = ["All Year", "First Year", "Second Year", "Third Year", "Fourth Year"];
 const STATUS_OPTIONS = ["To Be Enrolled", "All Registered", "Block", "Irregular"];
+const SORT_OPTIONS = ["Student Number ↑", "Student Number ↓", "Most Recent", "Oldest"];
+const OTHER_STATUS_OPTIONS = [
+  { label: "4Ps", field: "fourPs" },
+  { label: "Solo Parent", field: "soloParent" },
+  { label: "Indigenous", field: "indigenous" },
+  { label: "PWD", field: "disability" },
+];
 const YEAR_MAP = { "First Year": "1", "Second Year": "2", "Third Year": "3", "Fourth Year": "4" };
 
 function FilterSelect({ label, value, onChange, options }) {
@@ -45,6 +52,8 @@ function StudentList() {
   const [query, setQuery] = useState("");
   const [selectedYear, setSelectedYear] = useState("All Year");
   const [selectedSection, setSelectedSection] = useState("All Section");
+  const [selectedSort, setSelectedSort] = useState("Student Number ↑");
+  const [selectedOtherStatuses, setSelectedOtherStatuses] = useState([]);
   const [scheduleMap, setScheduleMap] = useState(new Map());
 
   const isPendingView = selectedStatus === "To Be Enrolled";
@@ -82,6 +91,12 @@ function StudentList() {
       result = result.filter((student) => student.status === selectedStatus);
     }
 
+    if (selectedOtherStatuses.length > 0) {
+      result = result.filter((student) =>
+        selectedOtherStatuses.every((field) => student[field] === true)
+      );
+    }
+
     const normalizedQuery = query.trim().toLowerCase();
     if (normalizedQuery) {
       result = result.filter((student) => {
@@ -113,7 +128,24 @@ function StudentList() {
       }
     }
 
-    return result.sort((left, right) => {
+    const defaultStudentNumber = (student) =>
+      String(student.studentNumber ?? student.applicantId ?? student.applicantID ?? "");
+    const compareStudentNumbers = (left, right, direction) => {
+      const leftNumber = defaultStudentNumber(left);
+      const rightNumber = defaultStudentNumber(right);
+      const leftYear = leftNumber.slice(0, 4);
+      const rightYear = rightNumber.slice(0, 4);
+      const leftRemainder = leftNumber.slice(4);
+      const rightRemainder = rightNumber.slice(4);
+      const yearDifference = leftYear.localeCompare(rightYear, undefined, { numeric: true });
+      const remainderDifference = leftRemainder.localeCompare(rightRemainder, undefined, { numeric: true });
+
+      if (yearDifference !== 0) return direction * yearDifference;
+      if (remainderDifference !== 0) return direction * remainderDifference;
+      return leftNumber.localeCompare(rightNumber, undefined, { numeric: true, sensitivity: "base" });
+    };
+
+    const compareDefaultOrder = (left, right) => {
       if (isPendingView) {
         return String(left.applicant_number ?? left.applicantID ?? "").localeCompare(
           String(right.applicant_number ?? right.applicantID ?? ""),
@@ -131,14 +163,41 @@ function StudentList() {
       });
       if (sectionDifference !== 0) return sectionDifference;
 
-      return String(left.studentNumber ?? left.applicantId ?? left.applicantID ?? "").localeCompare(
-        String(right.studentNumber ?? right.applicantId ?? right.applicantID ?? ""), undefined, {
+      return defaultStudentNumber(left).localeCompare(defaultStudentNumber(right), undefined, {
         numeric: true,
         sensitivity: "base",
-        }
-      );
-    });
-  }, [students, query, selectedYear, selectedSection, selectedStatus, isPendingView]);
+      });
+    };
+
+    if (!isPendingView && selectedSort === "Most Recent") {
+      result.sort((left, right) => {
+        const dateDifference = new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+        return Number.isNaN(dateDifference) ? compareDefaultOrder(left, right) : dateDifference;
+      });
+    } else if (!isPendingView && selectedSort === "Oldest") {
+      result.sort((left, right) => {
+        const dateDifference = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+        return Number.isNaN(dateDifference) ? compareDefaultOrder(left, right) : dateDifference;
+      });
+    } else if (!isPendingView && selectedSort === "Student Number ↓") {
+      result.sort((left, right) => compareStudentNumbers(left, right, 1));
+    } else if (!isPendingView && selectedSort === "Student Number ↑") {
+      result.sort((left, right) => compareStudentNumbers(left, right, -1));
+    } else {
+      result.sort(compareDefaultOrder);
+    }
+
+    return result;
+  }, [
+    students,
+    query,
+    selectedYear,
+    selectedSection,
+    selectedStatus,
+    selectedSort,
+    selectedOtherStatuses,
+    isPendingView,
+  ]);
 
   useEffect(() => {
     if (!availableSections.includes(selectedSection)) {
@@ -233,7 +292,7 @@ function StudentList() {
               />
 
               {!isPendingView && (
-                <div className="grid w-full grid-cols-2 gap-3 xl:w-auto">
+                <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-3 xl:w-auto">
                   <FilterSelect
                     label="Year"
                     value={selectedYear}
@@ -245,6 +304,12 @@ function StudentList() {
                     value={selectedSection}
                     onChange={(event) => setSelectedSection(event.target.value)}
                     options={availableSections}
+                  />
+                  <FilterSelect
+                    label="Sort By"
+                    value={selectedSort}
+                    onChange={(event) => setSelectedSort(event.target.value)}
+                    options={SORT_OPTIONS}
                   />
                 </div>
               )}
@@ -266,6 +331,34 @@ function StudentList() {
                   {status}
                 </button>
               ))}
+              <div className="ml-2 flex shrink-0 items-center gap-2 border-l border-slate-200 pl-3">
+                <span className="mr-1 text-[0.68rem] font-bold uppercase tracking-wide text-slate-500">
+                  Other Status
+                </span>
+                {OTHER_STATUS_OPTIONS.map(({ label, field }) => {
+                  const isSelected = selectedOtherStatuses.includes(field);
+                  return (
+                    <button
+                      key={field}
+                      type="button"
+                      onClick={() =>
+                        setSelectedOtherStatuses((current) =>
+                          isSelected
+                            ? current.filter((selectedField) => selectedField !== field)
+                            : [...current, field]
+                        )
+                      }
+                      aria-pressed={isSelected}
+                      className={`shrink-0 rounded-lg border px-3.5 py-2 text-sm font-semibold transition ${isSelected
+                        ? "border-emerald-700 bg-emerald-700 text-white "
+                        : "border-slate-200 bg-white text-slate-600 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800"
+                        }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </Panel>
