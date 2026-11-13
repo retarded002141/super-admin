@@ -312,9 +312,11 @@ function StudentsTable({
   tableHeightClass = "h-[420px] min-h-[420px]",
   identifierLabel,
   onApplicantIdClick,
+  detailStudentToOpen = null,
+  onDetailStudentClose,
 }) {
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [detailStudent, setDetailStudent] = useState(null);
+  const [detailStudent, setDetailStudent] = useState(detailStudentToOpen);
   const [activeDetailTab, setActiveDetailTab] = useState("overview");
   const [rawSearchQuery, setRawSearchQuery] = useState("");
 
@@ -367,6 +369,10 @@ function StudentsTable({
   const [pageSize, setPageSize] = useState(initialPageSize);
 
   const studentList = useMemo(() => (Array.isArray(students) ? students : []), [students]);
+  const closeDetailStudent = () => {
+    setDetailStudent(null);
+    onDetailStudentClose?.();
+  };
   const totalPages = Math.max(1, Math.ceil(studentList.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
 
@@ -1044,7 +1050,7 @@ function StudentsTable({
             <button
               type="button"
               className="absolute inset-0 bg-slate-950/60 transition-opacity"
-              onClick={() => setDetailStudent(null)}
+              onClick={closeDetailStudent}
               aria-label="Close student data dialog"
             />
             <div
@@ -1099,7 +1105,7 @@ function StudentsTable({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setDetailStudent(null)}
+                        onClick={closeDetailStudent}
                         className="grid h-8 w-8 place-items-center rounded-xl bg-white/10 text-white/90 transition hover:bg-white/20 hover:text-white"
                         aria-label="Close detail modal"
                       >
@@ -1341,7 +1347,7 @@ function StudentsTable({
                 </span>
                 <button
                   type="button"
-                  onClick={() => setDetailStudent(null)}
+                  onClick={closeDetailStudent}
                   className="rounded-xl bg-slate-900 px-5 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/50"
                 >
                   Close Record

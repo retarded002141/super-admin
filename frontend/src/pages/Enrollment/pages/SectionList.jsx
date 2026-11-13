@@ -19,6 +19,7 @@ function SectionList() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [showCapacityModal, setShowCapacityModal] = useState(false);
+  const [capacitySection, setCapacitySection] = useState(null);
   const [capacityValue, setCapacityValue] = useState(0);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [previewData, setPreviewData] = useState(null);
@@ -441,6 +442,7 @@ function SectionList() {
       // backend, so refresh the local student list right away to keep the
       // per-section student lists accurate without a page reload.
       await refreshStudents();
+      setCapacitySection(null);
     } catch (error) {
       console.error("Failed to update capacities", error);
       const errorMessage =
@@ -474,14 +476,15 @@ function SectionList() {
     setShowCapacityModal(false);
   };
 
-  const openCapacityModal = () => {
+  const openCapacityModal = (section = null) => {
+    setCapacitySection(section);
     setCapacityValue(50);
     setManualBlockCapacity("");
     setManualIrregularCapacity("");
     setManualMode(false);
     setManualError("");
     setApplyAutoSectioning(true);
-    setTargetSectionKeys(sections.map(getSectionKey));
+    setTargetSectionKeys(section ? [getSectionKey(section)] : sections.map(getSectionKey));
     setTargetSectionsExpanded(false);
     setShowCapacityModal(true);
   };
@@ -554,7 +557,7 @@ function SectionList() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={openCapacityModal}
+              onClick={() => openCapacityModal()}
               className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
             >
               <i className="fa-solid fa-gear mr-2" />
@@ -626,6 +629,7 @@ function SectionList() {
             students={students}
             onStudentsChanged={refreshStudents}
             onSectionsChanged={refreshSectionsAfterMove}
+            onSectionClick={openCapacityModal}
           />
         )}
       </Panel>
@@ -644,6 +648,11 @@ function SectionList() {
               <div>
                 <p className="text-[0.65rem] font-bold uppercase tracking-wide text-emerald-800">Section Configuration</p>
                 <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">Set Section Capacity</h3>
+                {capacitySection && (
+                  <p className="mt-1 text-sm font-semibold text-emerald-700">
+                    Year {capacitySection.year} - Section {capacitySection.section} ({capacitySection.semester})
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -657,7 +666,7 @@ function SectionList() {
 
             {!manualMode ? (
               <div className="mb-6 flex flex-col gap-3">
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                {!capacitySection && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
                   <button
                     type="button"
                     onClick={() => setTargetSectionsExpanded((expanded) => !expanded)}
@@ -706,7 +715,7 @@ function SectionList() {
                       )}
                     </div>
                   )}
-                </div>
+                </div>}
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-600">New Total Capacity</label>
                 <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                   <button
@@ -765,7 +774,7 @@ function SectionList() {
               </div>
             ) : (
               <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                {!capacitySection && <div className="sm:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
                   <button
                     type="button"
                     onClick={() => setTargetSectionsExpanded((expanded) => !expanded)}
@@ -808,7 +817,7 @@ function SectionList() {
                       })}
                     </div>
                   )}
-                </div>
+                </div>}
                 <div>
                   <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-600">Block Capacity</label>
                   <input
@@ -931,7 +940,11 @@ function SectionList() {
               <div className="min-w-0">
                 <p className="text-[0.65rem] font-bold uppercase tracking-wide text-emerald-700">Confirmation</p>
                 <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">Confirm Changes</h3>
-                <p className="mt-1 text-sm text-slate-500">Review the updated capacities before applying changes to all sections.</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {capacitySection
+                    ? `Review the updated capacity for Year ${capacitySection.year} - Section ${capacitySection.section}.`
+                    : "Review the updated capacities before applying changes to all sections."}
+                </p>
               </div>
               <button
                 type="button"
@@ -1001,6 +1014,16 @@ function SectionList() {
               </div>
             </div>
             <div className="border-t border-gray-200 bg-white px-4 py-3 flex items-center justify-end gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirmation(false);
+                  setShowCapacityModal(true);
+                }}
+                className="mr-auto px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+              >
+                Back to Capacity Settings
+              </button>
               <button
                 type="button"
                 onClick={() => { setShowConfirmation(false); setPreviewData(null); setPreviewSection(null); setCapacityValue(0); }}

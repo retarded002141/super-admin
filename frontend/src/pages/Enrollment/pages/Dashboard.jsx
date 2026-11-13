@@ -46,6 +46,7 @@ function Dashboard() {
     const [studentNumberStudent, setStudentNumberStudent] = useState(null);
     const [studentNumberInput, setStudentNumberInput] = useState("");
     const [assigningStudentNumber, setAssigningStudentNumber] = useState(false);
+    const [studentToView, setStudentToView] = useState(null);
 
     // Real-time duplicate check: find any existing student whose studentNumber matches the input
     const matchingExistingStudent = useMemo(() => {
@@ -1128,11 +1129,14 @@ function Dashboard() {
                             )
                         ) : (
                             <StudentsTable
+                                key={studentToView?._id || "new-students-table"}
                                 students={modalStudents}
                                 scheduleMap={scheduleMap}
                                 isPendingView={false}
                                 identifierLabel={modalTitle === "New Students" ? "Applicant Number" : undefined}
                                 onApplicantIdClick={modalTitle === "New Students" ? openStudentNumberDialog : undefined}
+                                detailStudentToOpen={studentToView}
+                                onDetailStudentClose={() => setStudentToView(null)}
                             />
                         )}
                     </div>
@@ -1409,19 +1413,44 @@ function Dashboard() {
                     {matchingExistingStudent && (
                         <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
                             <i className="fa-solid fa-circle-exclamation mt-0.5 text-sm text-red-500" />
-                            <div className="flex flex-col gap-0.5">
-                                <p className="text-xs font-semibold text-red-700">Student number already exists</p>
-                                <p className="text-xs text-red-600">
-                                    <span className="font-mono font-bold">{matchingExistingStudent.studentNumber}</span>
-                                    {" — "}
-                                    {[matchingExistingStudent.firstName, matchingExistingStudent.lastName, matchingExistingStudent.suffix].filter(Boolean).join(" ")}
-                                    {" — "}
-                                    {matchingExistingStudent.year || "?"}-{matchingExistingStudent.section || "?"}
-                                </p>
+                            <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+                                <div className="flex min-w-0 flex-col gap-0.5">
+                                    <p className="text-xs font-semibold text-red-700">Student number already exists</p>
+                                    <p className="text-xs text-red-600">
+                                        <span className="font-mono font-bold">{matchingExistingStudent.studentNumber}</span>
+                                        {" — "}
+                                        {[matchingExistingStudent.firstName, matchingExistingStudent.lastName, matchingExistingStudent.suffix].filter(Boolean).join(" ")}
+                                        {" — "}
+                                        {matchingExistingStudent.year || "?"}-{matchingExistingStudent.section || "?"}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setStudentToView(matchingExistingStudent);
+                                        setStudentNumberStudent(null);
+                                        setStudentNumberInput("");
+                                    }}
+                                    className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                                >
+                                    View
+                                </button>
                             </div>
                         </div>
                     )}
                     <div className="flex justify-end gap-3">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setStudentToView(studentNumberStudent);
+                                setStudentNumberStudent(null);
+                                setStudentNumberInput("");
+                            }}
+                            disabled={assigningStudentNumber || !studentNumberStudent}
+                            className="mr-auto rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            View
+                        </button>
                         <button
                             type="button"
                             onClick={() => {

@@ -6,12 +6,11 @@ import StudentsTable from "./StudentsTable";
 import api from "../lib/axios";
 import { getCapacityStateStyle, getSectionStatus } from "../utils/sectionStatus";
 
-function SectionTable({ sections, students, allSections = sections, onStudentsChanged, onSectionsChanged, className = "" }) {
+function SectionTable({ sections, students, allSections = sections, onStudentsChanged, onSectionsChanged, onSectionClick, className = "" }) {
   const [studentListSection, setStudentListSection] = useState(null);
   const [moveMode, setMoveMode] = useState(false);
-  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [studentDestinations, setStudentDestinations] = useState({});
   const [moveStep, setMoveStep] = useState("students");
-  const [targetSection, setTargetSection] = useState(null);
   const [isMoving, setIsMoving] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -69,16 +68,14 @@ function SectionTable({ sections, students, allSections = sections, onStudentsCh
   const openStudentList = (section) => {
     setStudentListSection(section);
     setMoveMode(false);
-    setSelectedStudentIds([]);
+    setStudentDestinations({});
     setMoveStep("students");
-    setTargetSection(null);
   };
   const closeStudentList = () => {
     setStudentListSection(null);
     setMoveMode(false);
-    setSelectedStudentIds([]);
+    setStudentDestinations({});
     setMoveStep("students");
-    setTargetSection(null);
   };
 
   const targetSections = useMemo(() => {
@@ -90,18 +87,32 @@ function SectionTable({ sections, students, allSections = sections, onStudentsCh
     );
   }, [allSections, studentListSection]);
 
+  const getSectionKey = (section) => `${section.year}::${section.section}::${section.semester}`;
+  const selectedStudentIds = Object.keys(studentDestinations);
+  const destinations = new Map(targetSections.map((section) => [getSectionKey(section), section]));
+
   const handleMoveStudents = async () => {
-    if (!targetSection || selectedStudentIds.length === 0 || isMoving) return;
+    if (selectedStudentIds.length === 0 || isMoving) return;
     try {
       setIsMoving(true);
-      await api.post("/students/move-section", {
-        studentIds: selectedStudentIds,
-        targetSection: {
-          year: targetSection.year,
-          section: targetSection.section,
-          semester: targetSection.semester,
-        },
-      });
+      const groupedStudentIds = selectedStudentIds.reduce((groups, studentId) => {
+        const destination = destinations.get(studentDestinations[studentId]);
+        if (!destination) return groups;
+        if (!groups.has(studentDestinations[studentId])) groups.set(studentDestinations[studentId], []);
+        groups.get(studentDestinations[studentId]).push(studentId);
+        return groups;
+      }, new Map());
+      await Promise.all([...groupedStudentIds.entries()].map(([key, ids]) => {
+        const destination = destinations.get(key);
+        return api.post("/students/move-section", {
+          studentIds: ids,
+          targetSection: {
+            year: destination.year,
+            section: destination.section,
+            semester: destination.semester,
+          },
+        });
+      }));
       await onStudentsChanged?.();
       await onSectionsChanged?.();
       toast.success("Students moved successfully");
@@ -120,6 +131,12 @@ function SectionTable({ sections, students, allSections = sections, onStudentsCh
   );
 
   const selectedStudents = studentRowsForModal.filter((student) => selectedStudentIds.includes(String(student._id)));
+  const groupedSelectedStudents = selectedStudents.reduce((groups, student) => {
+    const key = studentDestinations[String(student._id)];
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(student);
+    return groups;
+  }, new Map());
 
   const columnCount = 9;
 
@@ -151,14 +168,21 @@ function SectionTable({ sections, students, allSections = sections, onStudentsCh
                 const status = getSectionStatus(blockCount, blockCapacity, irregularCount, irregularCapacity);
 
                 return (
-                  <tr key={sec._id || `${sec.year}-${sec.section}-${sec.semester}`} className="hover:bg-emerald-50/60 transition-colors">
+                  <tr
+                    key={sec._id || `${sec.year}-${sec.section}-${sec.semester}`}
+                    onClick={() => onSectionClick?.(sec)}
+                    className="cursor-pointer transition-colors hover:bg-emerald-50/60"
+                  >
                     <td className="px-5 py-4 text-gray-800">{sec.year || "—"}</td>
                     <td className="px-5 py-4 font-medium text-gray-900">{sec.section || "—"}</td>
                     <td className="px-5 py-4 text-gray-600">{sec.semester || "—"}</td>
                     <td className="px-5 py-4 text-center">
                       <button
                         type="button"
-                        onClick={() => openStudentList(sec)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openStudentList(sec);
+                        }}
                         className={`${getCapacityStateStyle(blockCount, blockCapacity)} underline underline-offset-2 hover:opacity-80`}
                         aria-label={`View enrolled students for section ${sec.section}`}
                       >
@@ -168,7 +192,10 @@ function SectionTable({ sections, students, allSections = sections, onStudentsCh
                     <td className="px-5 py-4 text-center">
                       <button
                         type="button"
-                        onClick={() => openStudentList(sec)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openStudentList(sec);
+                        }}
                         className={`${getCapacityStateStyle(irregularCount, irregularCapacity)} underline underline-offset-2 hover:opacity-80`}
                         aria-label={`View irregular students for section ${sec.section}`}
                       >
@@ -185,7 +212,10 @@ function SectionTable({ sections, students, allSections = sections, onStudentsCh
                     <td className="px-5 py-4 text-center">
                       <button
                         type="button"
-                        onClick={() => openStudentList(sec)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openStudentList(sec);
+                        }}
                         className="rounded-full p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-[#2E522A] focus:outline-none focus:ring-2 focus:ring-[#2E522A]/50"
                         aria-label={`View students for section ${sec.section}`}
                       >
@@ -254,25 +284,36 @@ function SectionTable({ sections, students, allSections = sections, onStudentsCh
               </div>
 
               {moveStep === "students" && (
-                <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMoveMode((active) => !active);
-                      setSelectedStudentIds([]);
-                    }}
-                    className="rounded-lg bg-emerald-700 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-800"
-                  >
-                    {moveMode ? "Cancel" : "Move Students"}
-                  </button>
+                <div className="flex shrink-0 items-center justify-end gap-2 border-b border-slate-200 bg-white px-4 py-3">
                   {moveMode && (
                     <button
                       type="button"
-                      onClick={() => setMoveStep("targets")}
+                      onClick={() => {
+                        setMoveMode(false);
+                        setStudentDestinations({});
+                      }}
+                      className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  {moveMode && (
+                    <button
+                      type="button"
+                      onClick={() => setMoveStep("confirm")}
                       disabled={selectedStudentIds.length === 0}
                       className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Change Section
+                      Review Changes
+                    </button>
+                  )}
+                  {!moveMode && (
+                    <button
+                      type="button"
+                      onClick={() => setMoveMode(true)}
+                      className="rounded-lg bg-emerald-700 px-4 py-2 text-xs font-bold text-white transition hover:bg-emerald-800"
+                    >
+                      Move Students
                     </button>
                   )}
                 </div>
@@ -284,10 +325,10 @@ function SectionTable({ sections, students, allSections = sections, onStudentsCh
                     <table className="min-w-full text-sm">
                       <thead className="sticky top-0 bg-gray-50 text-gray-600">
                         <tr>
-                          <th className="px-4 py-3 text-center">Select</th>
                           <th className="px-4 py-3 text-left">Student Number</th>
                           <th className="px-4 py-3 text-left">Student Name</th>
                           <th className="px-4 py-3 text-left">Status</th>
+                          <th className="px-4 py-3 text-right">Select</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -296,17 +337,6 @@ function SectionTable({ sections, students, allSections = sections, onStudentsCh
                           const isIrregular = String(student.status ?? "").trim().toLowerCase() === "irregular";
                           return (
                             <tr key={studentId} className={isIrregular ? "bg-amber-50/50" : ""}>
-                              <td className="px-4 py-3 text-center">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedStudentIds.includes(studentId)}
-                                  disabled={isIrregular}
-                                  onChange={() => setSelectedStudentIds((current) =>
-                                    current.includes(studentId) ? current.filter((id) => id !== studentId) : [...current, studentId]
-                                  )}
-                                  className="h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
-                                />
-                              </td>
                               <td className="px-4 py-3 font-medium">{student.studentNumber || "-"}</td>
                               <td className="px-4 py-3">{`${student.firstName ?? ""} ${student.lastName ?? ""}`.trim() || "-"}</td>
                               <td className="px-4 py-3">
@@ -315,6 +345,33 @@ function SectionTable({ sections, students, allSections = sections, onStudentsCh
                                 }`}>
                                   {isIrregular ? "Irregular (Original Section)" : "Block"}
                                 </span>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                {isIrregular ? (
+                                  <span className="text-xs text-slate-400">Not movable</span>
+                                ) : (
+                                  <select
+                                    value={studentDestinations[studentId] || ""}
+                                    onChange={(event) => {
+                                      const { value } = event.target;
+                                      setStudentDestinations((current) => {
+                                        const next = { ...current };
+                                        if (value) next[studentId] = value;
+                                        else delete next[studentId];
+                                        return next;
+                                      });
+                                    }}
+                                    className="min-w-48 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                                    aria-label={`Select destination section for ${student.studentNumber || "student"}`}
+                                  >
+                                    <option value="">Select section</option>
+                                    {targetSections.map((section) => (
+                                      <option key={getSectionKey(section)} value={getSectionKey(section)}>
+                                        Year {section.year} - Section {section.section}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
                               </td>
                             </tr>
                           );
@@ -325,31 +382,33 @@ function SectionTable({ sections, students, allSections = sections, onStudentsCh
                     <StudentsTable students={studentRowsForModal} tableHeightClass="h-full min-h-[320px]" />
                   )}
                 </div>
-              ) : moveStep === "targets" ? (
-                <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto bg-slate-50/50 p-4">
-                  <button type="button" onClick={() => setMoveStep("students")} className="self-start text-sm font-semibold text-emerald-700">Back to students</button>
-                  <h4 className="text-lg font-bold text-slate-900">Select Target Section</h4>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {targetSections.map((section) => (
-                      <button
-                        key={`${section.year}-${section.section}-${section.semester}`}
-                        type="button"
-                        onClick={() => { setTargetSection(section); setMoveStep("confirm"); }}
-                        className="rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-emerald-400 hover:bg-emerald-50"
-                      >
-                        <p className="font-bold text-slate-900">Year {section.year} - Section {section.section}</p>
-                        <p className="mt-1 text-xs text-slate-500">{section.semester} Semester · {section.total ?? 0}/{section.totalCapacity ?? 0}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto bg-slate-50/50 p-5">
-                  <button type="button" onClick={() => setMoveStep("targets")} className="self-start text-sm font-semibold text-emerald-700">Back to target sections</button>
+                  <button type="button" onClick={() => setMoveStep("students")} className="self-start text-sm font-semibold text-emerald-700">Back to students</button>
                   <h4 className="text-lg font-bold text-slate-900">CONFIRM SECTION CHANGE</h4>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-bold uppercase text-slate-500">Previous Section</p><p className="mt-2 font-semibold">Year {studentListSection.year} - Section {studentListSection.section}</p></div>
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-bold uppercase text-emerald-700">New Section</p><p className="mt-2 font-semibold text-emerald-900">Year {targetSection?.year} - Section {targetSection?.section}</p></div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <p className="text-xs font-bold uppercase text-slate-500">Previous Section</p>
+                    <p className="mt-2 font-semibold">Year {studentListSection.year} - Section {studentListSection.section}</p>
+                  </div>
+                  <div className="space-y-4">
+                    {[...groupedSelectedStudents.entries()].map(([key, studentsForDestination]) => {
+                      const destination = destinations.get(key);
+                      return (
+                        <div key={key} className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                          <p className="font-bold text-emerald-900">
+                            Going to Year {destination?.year} - Section {destination?.section}
+                          </p>
+                          <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                            {studentsForDestination.map((student) => (
+                              <li key={student._id} className="flex justify-between gap-3 border-b border-emerald-100 pb-2 last:border-0 last:pb-0">
+                                <span>{`${student.firstName ?? ""} ${student.lastName ?? ""}`.trim() || "-"}</span>
+                                <span className="font-semibold">{student.studentNumber || "-"}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })}
                   </div>
                   <p className="text-sm text-slate-600">{selectedStudents.length} student(s) will be transferred.</p>
                   <button type="button" onClick={handleMoveStudents} disabled={isMoving} className="self-end rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">{isMoving ? "Changing..." : "Confirm Changes"}</button>
