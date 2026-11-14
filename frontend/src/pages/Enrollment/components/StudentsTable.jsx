@@ -157,6 +157,35 @@ function getCurriculumPeriodLabel(year, semester) {
   return `Year ${yearLabel} - ${semesterLabel}`;
 }
 
+function formatScheduleSemester(semester) {
+  const value = String(semester ?? "").trim();
+  if (!value) return "—";
+  if (/semester$/i.test(value)) {
+    return value.replace(/^first\b/i, "1st").replace(/^second\b/i, "2nd");
+  }
+  if (/^(1|1st)$/i.test(value)) return "1st Semester";
+  if (/^(2|2nd)$/i.test(value)) return "2nd Semester";
+  return `${value} Semester`;
+}
+
+function formatScheduleSchoolYear(schoolYear) {
+  const value = String(schoolYear ?? "").trim();
+  return value
+    ? value
+      .replace(/\s+(?:1st|2nd|first|second)\s+semester$/i, "")
+      .replace(/\s*-\s*/g, " - ")
+      .replace(/^AY\s+/i, "")
+    : "—";
+}
+
+function getScheduleSectionLabel(student) {
+  const section = getStudentSectionDisplay(student);
+  const year = getStudentYearDisplay(student);
+  if (!section) return "—";
+  if (!year || section.includes("|")) return section;
+  return section.startsWith(year) ? section : `${year}${section}`;
+}
+
 function formatDetailValue(key, value) {
   if (value === null || value === undefined || value === "") return "—";
 
@@ -1374,7 +1403,7 @@ function StudentsTable({
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
                     <i className={`fa-solid ${selectedSubjectView === "schedule" ? "fa-calendar-days" : "fa-book-open"} text-emerald-300`} />
                     {selectedSubjectView === "schedule"
-                      ? "Class Schedule"
+                      ? `Class Schedule: Section ${getScheduleSectionLabel(selectedStudent)} • ${formatScheduleSemester(selectedStudent.semester)} • ${formatScheduleSchoolYear(selectedStudent.schoolYear)}`
                       : isCurriculumMapping
                         ? "Curriculum Mapping"
                         : "Current Curriculum"}

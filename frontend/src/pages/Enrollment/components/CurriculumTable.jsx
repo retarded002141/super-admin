@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import api from "../lib/axios";
 import toast from "react-hot-toast";
-import { xlsxToJson, jsonToCsv, jsonToXlsxBlob, downloadFile, downloadBlob } from "../lib/curriculumUtils.js";
+import { xlsxToJson, jsonToXlsxBlob, downloadBlob } from "../lib/curriculumUtils.js";
 
 const YEAR_MAP = {
   "1st": "1st",
@@ -25,7 +25,6 @@ export default function CurriculumTable({ onRegularImportSuccess }) {
   const [selectedIrregularSubjects, setSelectedIrregularSubjects] = useState([]);
   const [irregularCurriculumLoading, setIrregularCurriculumLoading] = useState(false);
   const [showIrregularModal, setShowIrregularModal] = useState(false);
-  const [showIrregularExportModal, setShowIrregularExportModal] = useState(false);
   const [studentsWithCurriculum, setStudentsWithCurriculum] = useState(new Set());
 
   const yearKeys = useMemo(
@@ -289,64 +288,6 @@ export default function CurriculumTable({ onRegularImportSuccess }) {
       setSelectedIrregularSubjects([]);
     } finally {
       setIrregularCurriculumLoading(false);
-    }
-  };
-
-  const handleImportIrregularCurriculum = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedIrregularStudent) return;
-
-    try {
-      setIrregularCurriculumLoading(true);
-      const parsedJson = await parseCurriculumImportFile(file);
-
-      const docId = String(selectedIrregularStudent.studentNumber ?? "").trim();
-      const postRes = await api.post(`/curriculum/doc/${encodeURIComponent(docId)}`, {
-        data: parsedJson,
-      });
-
-      if (postRes?.data?.data) {
-        setSelectedIrregularCurriculum(postRes.data.data);
-        setStudentsWithCurriculum((prev) => new Set([...prev, docId]));
-      }
-
-      const replacedId = postRes?.data?.replacedDocumentId || docId;
-      toast.success(`Replaced ${replacedId}`);
-    } catch (error) {
-      console.error("Error importing irregular curriculum", error);
-      toast.error(error?.response?.data?.message || error?.message || "Failed to import curriculum");
-    } finally {
-      setIrregularCurriculumLoading(false);
-      e.target.value = "";
-    }
-  };
-
-  const handleExportIrregularAs = (format) => {
-    try {
-      if (!selectedIrregularStudent || !selectedIrregularCurriculum) {
-        toast.error("No data to export");
-        return;
-      }
-
-      const studentNumber = String(selectedIrregularStudent.studentNumber ?? "").trim();
-      const first = String(selectedIrregularStudent.firstName ?? "").trim();
-      const last = String(selectedIrregularStudent.lastName ?? "").trim();
-      const studentName = `${first} ${last}`.trim();
-      const base = `curriculum_${studentNumber}_${studentName}`;
-
-      if (format === "xlsx") {
-        const blob = jsonToXlsxBlob([selectedIrregularCurriculum]);
-        downloadBlob(blob, `${base}.xlsx`);
-      } else {
-        const csv = jsonToCsv([selectedIrregularCurriculum]);
-        downloadFile(csv, `${base}.csv`);
-      }
-
-      toast.success("Curriculum exported successfully");
-      setShowIrregularExportModal(false);
-    } catch (error) {
-      console.error("Error exporting irregular curriculum", error);
-      toast.error("Failed to export curriculum");
     }
   };
 
@@ -660,64 +601,9 @@ export default function CurriculumTable({ onRegularImportSuccess }) {
                 <div className="min-h-[260px] flex flex-col items-center justify-center text-center text-gray-500 gap-2">
                   <i className="fa-regular fa-folder-open text-4xl opacity-60"></i>
                   <p className="text-base font-semibold text-gray-700">No curriculum file found for this student.</p>
-                  <p className="text-sm text-gray-500">Import a curriculum file to create one.</p>
                 </div>
               )}
             </div>
-
-            <div className="p-4 border-t border-gray-100 bg-white flex flex-wrap justify-end gap-3">
-              <label className="flex items-center gap-2.5 bg-[#2E522A] text-white px-6 py-2.5 rounded-xl font-medium hover:bg-[#234120] transition-colors cursor-pointer">
-                <i className="fa-solid fa-file-import text-sm"></i>
-                Import Curriculum File
-                <input
-                  type="file"
-                  accept=".csv,.xlsx"
-                  onChange={handleImportIrregularCurriculum}
-                  disabled={irregularCurriculumLoading}
-                  className="hidden"
-                />
-              </label>
-
-              <button
-                onClick={() => setShowIrregularExportModal(true)}
-                disabled={!selectedIrregularCurriculum}
-                className="flex items-center gap-2.5 bg-[#2E522A] disabled:opacity-60 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-xl font-medium hover:bg-[#234120] transition-colors"
-              >
-                <i className="fa-solid fa-file-export text-sm"></i>
-                Export Curriculum
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showIrregularExportModal && (
-        <div className="fixed inset-0 z-[230] flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900">Export as</h3>
-            <p className="mt-1 text-sm text-gray-600">Choose the file format for this curriculum export.</p>
-
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button
-                onClick={() => handleExportIrregularAs("xlsx")}
-                className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors"
-              >
-                XLSX
-              </button>
-              <button
-                onClick={() => handleExportIrregularAs("csv")}
-                className="px-4 py-2.5 rounded-xl bg-[#2E522A] text-white font-medium hover:bg-[#234120] transition-colors"
-              >
-                CSV
-              </button>
-            </div>
-
-            <button
-              onClick={() => setShowIrregularExportModal(false)}
-              className="mt-3 w-full px-4 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
-            >
-              Cancel
-            </button>
           </div>
         </div>
       )}

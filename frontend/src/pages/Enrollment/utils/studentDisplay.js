@@ -33,7 +33,10 @@ function collectUniqueValues(primary, irregularValues) {
   return parts;
 }
 
-function joinDisplayValues(primary, irregularValues) {
+function joinDisplayValues(primary, irregularValues, preserveDuplicates = false) {
+  if (preserveDuplicates) {
+    return [String(primary ?? "").trim(), ...toDisplayList(irregularValues)].filter(Boolean).join(" | ");
+  }
   return collectUniqueValues(primary, irregularValues).join(" | ");
 }
 
@@ -43,8 +46,10 @@ function joinDisplayValues(primary, irregularValues) {
  * Returns the plain section value for non-irregular students.
  */
 export function getStudentSectionDisplay(student = {}) {
-  if (!isIrregularStudent(student)) return String(student.section ?? "").trim();
-  return joinDisplayValues(student.section, student.irregularSection);
+  if (!isIrregularStudent(student) && toDisplayList(student.irregularSection).length === 0) {
+    return String(student.section ?? "").trim();
+  }
+  return joinDisplayValues(student.section, student.irregularSection, true);
 }
 
 /**
